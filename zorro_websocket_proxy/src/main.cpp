@@ -5,7 +5,7 @@
 #include <signal.h>
 #include <algorithm>
 #include <cctype>
-#include "zorro_websockets_proxy.h"
+#include "zorro_websocket_proxy.h"
 
 #pragma comment(lib, "Ws2_32.lib")
 

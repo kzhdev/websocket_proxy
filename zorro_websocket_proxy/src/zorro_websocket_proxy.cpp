@@ -1,4 +1,4 @@
-#include "zorro_websockets_proxy.h"
+#include "zorro_websocket_proxy.h"
 #include <thread>
 #include <libwebsockets.h>
 #include <fstream>

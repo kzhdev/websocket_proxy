@@ -4,8 +4,6 @@
 #include <slicksocket/callback.h>
 #include <lws/libwebsockets.h>
 #include "slick_queue.h"
-#include "logger.h"
-#include "dll_info.h"
 #include <unordered_set>
 
 namespace zorro {

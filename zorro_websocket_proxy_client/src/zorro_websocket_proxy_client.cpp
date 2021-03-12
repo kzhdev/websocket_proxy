@@ -4,7 +4,7 @@
 #include <filesystem>
 #include <thread>
 #include <chrono>
-#include "zorro_websockets_proxy_client.h"
+#include "zorro_websocket_proxy_client.h"
 
 using namespace zorro::websockets;
 

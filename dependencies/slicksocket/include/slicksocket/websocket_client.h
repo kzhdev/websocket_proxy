@@ -54,6 +54,8 @@ class websocket_client {
                    bool use_global_service = false);
 
   virtual ~websocket_client() noexcept;
+  
+  const std::string& url() const noexcept { return url_; }
 
   /**
    * Connect to WebSocket server
