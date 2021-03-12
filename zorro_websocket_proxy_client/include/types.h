@@ -5,10 +5,10 @@
 #include <chrono>
 
 namespace zorro {
-namespace websockets {
+namespace websocket {
 
-#define CLIENT_TO_SERVER_QUEUE "Global\\ZorroWebsocketsProxy_client_server"
-#define SERVER_TO_CLIENT_QUEUE "Global\\ZorroWebsocketsProxy_server_client"
+#define CLIENT_TO_SERVER_QUEUE "Global\\ZorroWebsocketProxy_client_server"
+#define SERVER_TO_CLIENT_QUEUE "Global\\ZorroWebsocketProxy_server_client"
 #define HEARTBEAT_INTERVAL 500  // 500ms
 #define HEARTBEAT_TIMEOUT 2000 // 2s
 

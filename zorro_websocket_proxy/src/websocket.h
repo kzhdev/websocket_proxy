@@ -7,11 +7,11 @@
 #include <unordered_set>
 
 namespace zorro {
-namespace websockets {
+namespace websocket {
 
     class Websocket : public slick::net::websocket_client, private slick::net::client_callback_t {
-        friend class ZorroWebsocketsProxy;
-        ZorroWebsocketsProxy* proxy_ = nullptr;
+        friend class ZorroWebsocketProxy;
+        ZorroWebsocketProxy* proxy_ = nullptr;
         uint32_t id_ = 0;
         DWORD initiator_ = 0;
         std::unordered_set<DWORD> clients_;
@@ -26,7 +26,7 @@ namespace websockets {
 
 
     public:
-        Websocket(ZorroWebsocketsProxy* proxy, uint32_t id, std::string url) 
+        Websocket(ZorroWebsocketProxy* proxy, uint32_t id, std::string url) 
             : websocket_client(this, std::move(url), "", proxy->exec_path_ + "/cert.pem", -1, true)
             , proxy_(proxy)
             , id_(id)

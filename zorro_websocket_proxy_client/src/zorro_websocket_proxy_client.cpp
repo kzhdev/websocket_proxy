@@ -6,15 +6,15 @@
 #include <chrono>
 #include "zorro_websocket_proxy_client.h"
 
-using namespace zorro::websockets;
+using namespace zorro::websocket;
 
 namespace {
-    constexpr TCHAR szName[] = TEXT("ZorroWebsocketsProxy");
+    constexpr TCHAR szName[] = TEXT("ZorroWebsocketProxy");
     constexpr uint32_t BF_SZ = 64;
 }
 
 
-ZorroWebsocketsProxyClient::ZorroWebsocketsProxyClient(WebsocketProxyCallback* callback, std::string&& name, broker_error broker_err, broker_progress broker_prog)
+ZorroWebsocketProxyClient::ZorroWebsocketProxyClient(WebsocketProxyCallback* callback, std::string&& name, broker_error broker_err, broker_progress broker_prog)
     : callback_(callback)
     , broker_error_(broker_err)
     , broker_progress_(broker_prog)
@@ -23,7 +23,7 @@ ZorroWebsocketsProxyClient::ZorroWebsocketsProxyClient(WebsocketProxyCallback* c
     , worker_thread_([this]() { doWork(); })
 {}
 
-ZorroWebsocketsProxyClient::~ZorroWebsocketsProxyClient() {
+ZorroWebsocketProxyClient::~ZorroWebsocketProxyClient() {
     if (server_pid_.load(std::memory_order_relaxed)) {
         unregister();
     }
@@ -35,7 +35,7 @@ ZorroWebsocketsProxyClient::~ZorroWebsocketsProxyClient() {
     }
 }
 
-bool ZorroWebsocketsProxyClient::connect() {
+bool ZorroWebsocketProxyClient::connect() {
     if (!spawnWebsocketsProxyServer()) {
         log_(L_ERROR, "Failed to spawn websocket proxy");
         return false;
@@ -44,13 +44,13 @@ bool ZorroWebsocketsProxyClient::connect() {
     return _register();
 }
 
-void ZorroWebsocketsProxyClient::sendMessage(Message* msg, uint64_t index, uint32_t size) {
+void ZorroWebsocketProxyClient::sendMessage(Message* msg, uint64_t index, uint32_t size) {
     msg->status.store(Message::Status::PENDING, std::memory_order_relaxed);
     client_queue_->publish(index, size);
     last_heartbeat_time_ = get_timestamp();
 }
 
-bool ZorroWebsocketsProxyClient::waitForResponse(Message* msg, uint32_t timeout) const {
+bool ZorroWebsocketProxyClient::waitForResponse(Message* msg, uint32_t timeout) const {
     auto start = get_timestamp();
     while (msg->status.load(std::memory_order_relaxed()) == Message::Status::PENDING) {
         if ((get_timestamp() - start) > timeout) {
@@ -62,10 +62,10 @@ bool ZorroWebsocketsProxyClient::waitForResponse(Message* msg, uint32_t timeout)
     return true;
 }
 
-bool ZorroWebsocketsProxyClient::spawnWebsocketsProxyServer() {
-    if (!isProcessRunning(L"zorro_websockets_proxy.exe")) {
+bool ZorroWebsocketProxyClient::spawnWebsocketsProxyServer() {
+    if (!isProcessRunning(L"zorro_websocket_proxy.exe")) {
         auto path = std::filesystem::current_path();
-        path.append("Plugin\\websockets_proxy\\zorro_websockets_proxy.exe");
+        path.append("Plugin\\websocket_proxy\\zorro_websocket_proxy.exe");
 
         STARTUPINFOW si;
         PROCESS_INFORMATION pi;
@@ -74,7 +74,7 @@ bool ZorroWebsocketsProxyClient::spawnWebsocketsProxyServer() {
         ZeroMemory(&pi, sizeof(pi));
 
         if (!CreateProcessW(path.c_str(), NULL, NULL, NULL, FALSE, DETACHED_PROCESS, NULL, NULL, &si, &pi)) {
-            brokerError("Failed to launch websockets_proxy. err=" + std::to_string(GetLastError()));
+            brokerError("Failed to launch websocket_proxy. err=" + std::to_string(GetLastError()));
             return false;
         }
         CloseHandle(pi.hProcess);
@@ -82,7 +82,7 @@ bool ZorroWebsocketsProxyClient::spawnWebsocketsProxyServer() {
 
         // wait for proxy to start up
         auto start = get_timestamp();
-        while (!isProcessRunning(L"zorror_websockets_proxy.exe") && (get_timestamp() - start) < 10000) {
+        while (!isProcessRunning(L"zorror_websocket_proxy.exe") && (get_timestamp() - start) < 10000) {
             std::this_thread::yield();
         }
     }
@@ -101,7 +101,7 @@ bool ZorroWebsocketsProxyClient::spawnWebsocketsProxyServer() {
     }
 
     if (!server_queue_) {
-        brokerError("Failed to launch websockets_proxy. server_queue_ not ready");
+        brokerError("Failed to launch websocket_proxy. server_queue_ not ready");
         return false;
     }
 
@@ -109,7 +109,7 @@ bool ZorroWebsocketsProxyClient::spawnWebsocketsProxyServer() {
         client_queue_ = std::make_unique<SHM_QUEUE_T>(CLIENT_TO_SERVER_QUEUE);
     }
     catch (const std::runtime_error&) {
-        brokerError("Failed to launch websockets_proxy. client_req_queue not ready");
+        brokerError("Failed to launch websocket_proxy. client_req_queue not ready");
         return false;
     }
 
@@ -117,14 +117,14 @@ bool ZorroWebsocketsProxyClient::spawnWebsocketsProxyServer() {
     return true;
 }
 
-bool ZorroWebsocketsProxyClient::_register() {
+bool ZorroWebsocketProxyClient::_register() {
     auto [msg, index, size] = reserveMessage<RegisterMessage>();
     msg->type = Message::Type::Regster;
     auto reg = reinterpret_cast<RegisterMessage*>(msg->data);
     strcpy_s(reg->name, 32, name_.c_str());
     sendMessage(msg, index, size);
     if (!waitForResponse(msg, 20000)) {
-        brokerError("Unable to connect to websockets_proxy. timeout");
+        brokerError("Unable to connect to websocket_proxy. timeout");
         return false;
     }
 
@@ -138,7 +138,7 @@ bool ZorroWebsocketsProxyClient::_register() {
     return true;
 }
 
-void ZorroWebsocketsProxyClient::unregister() {
+void ZorroWebsocketProxyClient::unregister() {
     auto [msg, index, size] = reserveMessage();
     msg->type = Message::Type::Unregister;
     sendMessage(msg, index, size);
@@ -146,7 +146,7 @@ void ZorroWebsocketsProxyClient::unregister() {
     log_(L_INFO, "Unregistered, pid=" + std::to_string(pid_));
 }
 
-std::pair<uint32_t, bool> ZorroWebsocketsProxyClient::openWs(const std::string& url) {
+std::pair<uint32_t, bool> ZorroWebsocketProxyClient::openWs(const std::string& url) {
     if (url.size() > 255) {
         brokerError("URL is to long. limit is 255 character");
         return std::make_pair(0, false);
@@ -181,7 +181,7 @@ std::pair<uint32_t, bool> ZorroWebsocketsProxyClient::openWs(const std::string& 
     return std::make_pair(req->id, req->new_connection);
 }
 
-bool ZorroWebsocketsProxyClient::closeWs(uint32_t id) {
+bool ZorroWebsocketProxyClient::closeWs(uint32_t id) {
     auto [msg, index, size] = reserveMessage<WsClose>();
     msg->type = Message::Type::CloseWs;
     auto req = reinterpret_cast<WsClose*>(msg->data);
@@ -191,7 +191,7 @@ bool ZorroWebsocketsProxyClient::closeWs(uint32_t id) {
     return true;
 }
 
-void ZorroWebsocketsProxyClient::send(uint32_t id, const char* data, size_t len) {
+void ZorroWebsocketProxyClient::send(uint32_t id, const char* data, size_t len) {
     auto [msg, index, size] = reserveMessage<WsRequest>(len);
     msg->type = Message::Type::WsRequest;
     auto req = reinterpret_cast<WsRequest*>(msg->data);
@@ -201,7 +201,7 @@ void ZorroWebsocketsProxyClient::send(uint32_t id, const char* data, size_t len)
     sendMessage(msg, index, size);
 }
 
-void ZorroWebsocketsProxyClient::doWork() {
+void ZorroWebsocketProxyClient::doWork() {
     while (run_.load(std::memory_order_relaxed)) {
         auto server_pid = server_pid_.load(std::memory_order_relaxed);
         if (!server_pid) {
@@ -261,7 +261,7 @@ void ZorroWebsocketsProxyClient::doWork() {
     }
 }
 
-void ZorroWebsocketsProxyClient::handleWsOpen(Message* msg) {
+void ZorroWebsocketProxyClient::handleWsOpen(Message* msg) {
     auto open = reinterpret_cast<WsOpen*>(msg->data);
     log_(L_DEBUG, "handleWsOPen, initiator=" + std::to_string(open->initiator));
     if (open->initiator == pid_) {
@@ -270,7 +270,7 @@ void ZorroWebsocketsProxyClient::handleWsOpen(Message* msg) {
     }
 }
 
-void ZorroWebsocketsProxyClient::handleWsClose(Message* msg) {
+void ZorroWebsocketProxyClient::handleWsClose(Message* msg) {
     auto close = reinterpret_cast<WsClose*>(msg->data);
     auto it = websockets_.find(close->id);
     if (it != websockets_.end()) {
@@ -282,7 +282,7 @@ void ZorroWebsocketsProxyClient::handleWsClose(Message* msg) {
     }
 }
 
-void ZorroWebsocketsProxyClient::handleWsError(Message* msg) {
+void ZorroWebsocketProxyClient::handleWsError(Message* msg) {
     auto err = reinterpret_cast<WsError*>(msg->data);
     auto it = websockets_.find(err->id);
     if (it != websockets_.end()) {
@@ -297,7 +297,7 @@ void ZorroWebsocketsProxyClient::handleWsError(Message* msg) {
     }
 }
 
-void ZorroWebsocketsProxyClient::handleWsData(Message* msg) {
+void ZorroWebsocketProxyClient::handleWsData(Message* msg) {
     auto data = reinterpret_cast<WsData*>(msg->data);
     auto it = websockets_.find(data->id);
     if (it != websockets_.end()) {

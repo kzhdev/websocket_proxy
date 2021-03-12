@@ -10,11 +10,11 @@
 #include "utils.h"
 
 namespace zorro {
-namespace websockets {
+namespace websocket {
 
     class Websocket;
 
-    class ZorroWebsocketsProxy final {
+    class ZorroWebsocketProxy final {
         std::atomic_bool run_{ true };
         SHM_QUEUE_T client_queue_;
         SHM_QUEUE_T server_queue_;
@@ -41,8 +41,8 @@ namespace websockets {
         uint64_t closed_sockets_index_ = 0;
 
     public:
-        ZorroWebsocketsProxy(uint32_t ws_queue_size);
-        ~ZorroWebsocketsProxy();
+        ZorroWebsocketProxy(uint32_t ws_queue_size);
+        ~ZorroWebsocketProxy();
 
         void run(const char* executable_path, int32_t logLevel);
         void stop() noexcept { run_.store(false, std::memory_order_release); }

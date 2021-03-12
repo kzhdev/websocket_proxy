@@ -92,6 +92,11 @@
       <AdditionalDependencies>slicksocket.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>../dependencies/slicksocket/lib/Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
+    <PostBuildEvent>
+      <Command>copy $(ProjectDir)\..\dependencies\slicksocket\lib\libcrypto-1_1.dll $(OutDir)
+copy $(ProjectDir)\..\dependencies\slicksocket\lib\libssl-1_1.dll $(OutDir)
+copy $(ProjectDir)\..\dependencies\slicksocket\cert.pem $(OutDir)</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -113,6 +118,10 @@
       <AdditionalDependencies>slicksocket.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>../dependencies/slicksocket/lib/Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
+    <PostBuildEvent>
+      <Command>copy $(ProjectDir)\..\dependencies\slicksocket\lib\libcrypto-1_1.dll $(OutDir)
+copy $(ProjectDir)\..\dependencies\slicksocket\lib\libssl-1_1.dll $(OutDir)</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>

@@ -5,7 +5,7 @@
 
 
 namespace zorro {
-namespace websockets {
+namespace websocket {
 
     inline uint64_t get_timestamp() {
         auto now = std::chrono::system_clock::now();

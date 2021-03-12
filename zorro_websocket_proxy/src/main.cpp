@@ -23,10 +23,10 @@
 #define	L_USER	(1 << 10)
 #define	L_THREAD	(1 << 11)
 
-using namespace zorro::websockets;
+using namespace zorro::websocket;
 
 namespace {
-    ZorroWebsocketsProxy* the_proxy = nullptr;
+    ZorroWebsocketProxy* the_proxy = nullptr;
 }
 
 void sigHandler(int sig) {
@@ -85,11 +85,11 @@ int main(int argc, char* argv[])
     signal(SIGINT, sigHandler);
 
     try {
-        std::cout << "ZorroWebsocketsProxy Started." << std::endl;
-        std::unique_ptr<ZorroWebsocketsProxy> proxy = std::make_unique<ZorroWebsocketsProxy>(ws_queue_size);
+        std::cout << "ZorroWebsocketProxy Started." << std::endl;
+        std::unique_ptr<ZorroWebsocketProxy> proxy = std::make_unique<ZorroWebsocketProxy>(ws_queue_size);
         the_proxy = proxy.get();
         proxy->run(argv[0], level);
     }
     catch (...) {}
-    std::cout << "ZorroWebsocketsProxy Exit." << std::endl;
+    std::cout << "ZorroWebsocketProxy Exit." << std::endl;
 }

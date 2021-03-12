@@ -10,7 +10,7 @@
 #include "utils.h"
 
 namespace zorro {
-namespace websockets {
+namespace websocket {
 
     enum LogLevel : uint8_t {
         L_OFF,
@@ -38,10 +38,10 @@ namespace websockets {
         virtual void onWebsocketData(uint32_t id, const char* data, size_t len, size_t remaining) = 0;
     };
 
-    class ZorroWebsocketsProxyClient {
+    class ZorroWebsocketProxyClient {
     public:
-        ZorroWebsocketsProxyClient(WebsocketProxyCallback* callback, std::string&& name, broker_error broker_err, broker_progress broker_prog);
-        virtual ~ZorroWebsocketsProxyClient();
+        ZorroWebsocketProxyClient(WebsocketProxyCallback* callback, std::string&& name, broker_error broker_err, broker_progress broker_prog);
+        virtual ~ZorroWebsocketProxyClient();
 
         void setLogger(log log_func) noexcept { log_ = log_func; }
         DWORD serverId() const noexcept { return server_pid_; }
