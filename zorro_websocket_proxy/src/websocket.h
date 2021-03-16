@@ -59,7 +59,9 @@ namespace websocket {
                 if (status != Status::CONNECTING) {
                     break;
                 }
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                if (!proxy_->sendHeartbeat()) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                }
             }
             return status_ == Status::CONNECTED;
         }

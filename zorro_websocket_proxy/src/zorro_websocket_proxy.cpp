@@ -352,9 +352,13 @@ void ZorroWebsocketProxy::sendWsRequest(Message& msg) {
     msg.status.store(Message::Status::FAILED, std::memory_order_release);
 }
 
-void ZorroWebsocketProxy::sendMessage(Message* msg, uint64_t index, uint32_t size) {
+void ZorroWebsocketProxy::sendMessage(uint64_t index, uint32_t size) {
+    sendMessage(index, size, get_timestamp());
+}
+
+void ZorroWebsocketProxy::sendMessage(uint64_t index, uint32_t size, uint64_t now) {
     server_queue_.publish(index, size);
-    last_heartbeat_time_ = get_timestamp();
+    last_heartbeat_time_ = now;
 }
 
 bool ZorroWebsocketProxy::checkHeartbeats() {
@@ -366,13 +370,7 @@ bool ZorroWebsocketProxy::checkHeartbeats() {
         return false;
     }
     auto now = get_timestamp();
-    bool hasActivity = false;
-    if ((now - last_heartbeat_time_) > HEARTBEAT_INTERVAL) {
-        auto [msg, index, size] = reserveMessage();
-        msg->type = Message::Type::Heartbeat;
-        sendMessage(msg, index, size);
-        hasActivity = true;
-    }
+    bool hasActivity = sendHeartbeat(now);
 
     for (auto it = clients_.begin(); it != clients_.end();) {
         auto& client = it->second;
@@ -391,6 +389,20 @@ bool ZorroWebsocketProxy::checkHeartbeats() {
     }
 
     return hasActivity;
+}
+
+bool ZorroWebsocketProxy::sendHeartbeat() {
+    return sendHeartbeat(get_timestamp());
+}
+
+bool ZorroWebsocketProxy::sendHeartbeat(uint64_t now) {
+    if ((now - last_heartbeat_time_) > HEARTBEAT_INTERVAL) {
+        auto [msg, index, size] = reserveMessage();
+        msg->type = Message::Type::Heartbeat;
+        sendMessage(index, size, now);
+        return true;
+    }
+    return false;
 }
 
 void ZorroWebsocketProxy::removeClosedSockets() {
@@ -415,7 +427,7 @@ void ZorroWebsocketProxy::onWsOpened(uint32_t id, DWORD initiator) {
     open->id = id;
     open->initiator = initiator;
     open->new_connection = true;
-    sendMessage(msg, index, size);
+    sendMessage(index, size);
     lwsl_user("send ws opened to client\n");
 }
 
@@ -424,7 +436,7 @@ void ZorroWebsocketProxy::onWsClosed(uint32_t id) {
     msg->type = Message::Type::CloseWs;
     auto wsclose = reinterpret_cast<WsClose*>(msg->data);
     wsclose->id = id;
-    sendMessage(msg, index, size);
+    sendMessage(index, size);
 
     auto idx = closed_sockets_.reserve();
     (*closed_sockets_[idx]) = id;
@@ -440,7 +452,7 @@ void ZorroWebsocketProxy::onWsError(uint32_t id, const char* err, size_t len) {
     if (err && len) {
         memcpy(e->err, err, len);
     }
-    sendMessage(msg, index, size);
+    sendMessage(index, size);
 }
 
 void ZorroWebsocketProxy::onWsData(uint32_t id, const char* data, size_t len, size_t remaining) {
@@ -453,6 +465,6 @@ void ZorroWebsocketProxy::onWsData(uint32_t id, const char* data, size_t len, si
     if (data && len) {
         memcpy(d->data, data, len);
     }
-    sendMessage(msg, index, size);
+    sendMessage(index, size);
     //lwsl_user("<-- %.*s\n", len, data);
 }

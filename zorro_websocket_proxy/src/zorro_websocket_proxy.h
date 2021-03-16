@@ -60,7 +60,10 @@ namespace websocket {
         void sendWsRequest(Message& msg);
         ClientInfo* getClient(DWORD pid);
         bool checkHeartbeats();
-        void sendMessage(Message* msg, uint64_t idex, uint32_t size);
+        bool sendHeartbeat();
+        bool sendHeartbeat(uint64_t now);
+        void sendMessage(uint64_t idex, uint32_t size);
+        void sendMessage(uint64_t idex, uint32_t size, uint64_t now);
         void onWsOpened(uint32_t id, DWORD initicator);
         void onWsClosed(uint32_t id);
         void onWsError(uint32_t id, const char* err, size_t len);
