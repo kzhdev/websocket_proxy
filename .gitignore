@@ -34,6 +34,7 @@
 .vs
 Debug
 Release
-!dependencies/slicksocket/lib/Debug
-!dependencies/slicksocket/lib/Release
-*vcxproj.user
+!dependencies/slicksocket/lib/*
+!dependencies/slicksocket/lib/Debug/*
+!dependencies/slicksocket/lib/Release/*
+*.vcxproj.user
