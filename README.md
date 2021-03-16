@@ -1,5 +1,5 @@
 # ZorroWebsocketProxy
-ZorroWebsocketProxy is a C++ WebSocket prroxy framework initally created for Zorro-Trader. It can be used for any application to share one WebSockets connection for multiple apllications.
+ZorroWebsocketProxy is a C++ WebSocket prroxy framework initally created for Zorro-Trader. It can be used for any application to share one WebSockets connection for multiple application instances.
 
 ## Overview
 ZorroWebsocketProxy includes two components: a standalone proxy server excutable and a proxy client static library. The proxy server and client communicate with each other through shared memory ring buffers.
