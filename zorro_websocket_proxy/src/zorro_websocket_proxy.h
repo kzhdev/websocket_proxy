@@ -26,7 +26,6 @@ namespace websocket {
         HANDLE hMapFile_ = nullptr;
         LPVOID lpvMem_ = nullptr;
         bool own_shm_ = false;
-        bool clientSeen_ = false;
         std::atomic<DWORD>* owner_pid_ = nullptr;
         std::string exec_path_;
 
@@ -41,10 +40,10 @@ namespace websocket {
         uint64_t closed_sockets_index_ = 0;
 
     public:
-        ZorroWebsocketProxy(uint32_t ws_queue_size);
+        ZorroWebsocketProxy(uint32_t server_queue_size, int32_t logLevel);
         ~ZorroWebsocketProxy();
 
-        void run(const char* executable_path, int32_t logLevel);
+        void run();
         void stop() noexcept { run_.store(false, std::memory_order_release); }
 
     private:
@@ -55,6 +54,7 @@ namespace websocket {
         void unregisterClient(uint32_t pid);
         void handleClientHeartbeat(Message& msg);
         void openWs(Message& msg);
+        void openNewWs(Message& msg, WsOpen* req);
         void closeWs(Message& msg);
         void closeWs(uint32_t id, DWORD pid);
         void sendWsRequest(Message& msg);

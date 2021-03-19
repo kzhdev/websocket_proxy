@@ -38,17 +38,16 @@ void sigHandler(int sig) {
 
 /**
 * Usage:
-* ZorroWebsocketsProxy.exe [-p <port>] [-s <ws_queue_size>] [-l <logging_level>]
+* ZorroWebsocketsProxy.exe [-s <server_queue_size>] [-l <logging_level>]
 * 
 * Arguments:
+*   -s [optional]: Specify server to client queue size in Byte. Default to 16777216 Bytes.
 *   -l [optional]: Specify logging level. By default, logging will be disabled in release build.
-*                  Valid Logging level: OFF, ERROR, WARNING, INFO, DEBUG
-* 
+*                  Valid Logging level: OFF, ERROR, WARNING, INFO, DEBUG* 
 */
 int main(int argc, char* argv[])
 {
-    uint32_t port = 55000;
-    uint32_t ws_queue_size = 1 << 24;   // 16MB
+    uint32_t server_queue_size = 1 << 24;   // 16MB
 #ifdef _DEBUG
     int32_t level = L_ERR | L_WARN | L_NOTICE | L_USER;
 #else
@@ -56,15 +55,13 @@ int main(int argc, char* argv[])
 #endif
 
     for (int i = 1; i < argc - 1; ++i) {
-        if ((strcmp(argv[i], "-g") == 0) || (strcmp(argv[i], "-G") == 0)) {
-            port = atoi(argv[++i]);
-        }
-        else if (strcmp(argv[1], "-l") == 0 || (strcmp(argv[i], "-L") == 0)) {
+        if (_stricmp(argv[i], "-l") == 0) {
             std::string l = argv[++i];
             std::transform(l.begin(), l.end(), l.begin(), std::tolower);
             if (l == "off") {
                 level = L_OFF;
-            } else if (l == "error") {
+            }
+            else if (l == "error") {
                 level = L_ERR;
             }
             else if (l == "warning") {
@@ -80,15 +77,18 @@ int main(int argc, char* argv[])
                 level = L_ERR | L_WARN | L_NOTICE | L_USER | L_INFO | L_DEBUG;
             }
         }
+        else if (_stricmp(argv[i], "-s") == 0) {
+            server_queue_size = atoi(argv[++i]);
+        }
     }
 
     signal(SIGINT, sigHandler);
 
     try {
         std::cout << "ZorroWebsocketProxy Started." << std::endl;
-        std::unique_ptr<ZorroWebsocketProxy> proxy = std::make_unique<ZorroWebsocketProxy>(ws_queue_size);
+        std::unique_ptr<ZorroWebsocketProxy> proxy = std::make_unique<ZorroWebsocketProxy>(server_queue_size, level);
         the_proxy = proxy.get();
-        proxy->run(argv[0], level);
+        proxy->run();
     }
     catch (...) {}
     std::cout << "ZorroWebsocketProxy Exit." << std::endl;

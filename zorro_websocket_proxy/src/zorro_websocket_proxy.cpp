@@ -55,15 +55,40 @@ namespace {
             fflush(logfile.file);
         }
     }
+
+    std::string GetExePath()
+    {
+#ifdef _WIN32
+        wchar_t result[MAX_PATH] = { 0 };
+        GetModuleFileNameW(NULL, result, MAX_PATH);
+        std::wstring wsPath(result);
+        std::string path(wsPath.begin(), wsPath.end());
+        auto pos = path.rfind("\\");
+#else
+        char result[PATH_MAX];
+        ssize_t count = readlink("/proc/self/exe", result, PATH_MAX);
+        std::string path(result, (count > 0) ? count : 0);
+        auto pos = path.rfind("/");
+#endif
+        return path.substr(0, pos);
+    }
 }
 
-ZorroWebsocketProxy::ZorroWebsocketProxy(uint32_t ws_queue_size) 
+ZorroWebsocketProxy::ZorroWebsocketProxy(uint32_t server_queue_size, int32_t logLevel)
     : client_queue_(1 << 16, CLIENT_TO_SERVER_QUEUE)
-    , server_queue_(ws_queue_size, SERVER_TO_CLIENT_QUEUE)
+    , server_queue_(server_queue_size, SERVER_TO_CLIENT_QUEUE)
     , client_index_(client_queue_.initial_reading_index())
-    , pid_(GetCurrentProcessId()) 
+    , pid_(GetCurrentProcessId())
+    , exec_path_(GetExePath())
     , closed_sockets_(256) {
-   
+
+    if (!logLevel || !logfile.file) {
+        lws_set_log_level(LLL_ERR, nullptr);
+    }
+    else {
+        lws_set_log_level(logLevel, log);
+    }
+
     hMapFile_ = CreateFileMapping(
         INVALID_HANDLE_VALUE,   // use paging file
         NULL,                   // default security
@@ -115,20 +140,7 @@ ZorroWebsocketProxy::~ZorroWebsocketProxy() {
     lwsl_user("WebosocketsProsy destroyed\n");
 }
 
-void ZorroWebsocketProxy::run(const char* executable_path, int32_t logLevel) {
-    if (!logLevel || !logfile.file) {
-        lws_set_log_level(LLL_ERR, nullptr);
-    }
-    else {
-        lws_set_log_level(logLevel, log);
-    }
-
-    std::string path(executable_path);
-    auto pos = path.rfind("zorro_websocket_proxy.exe");
-    if (pos != std::string::npos) {
-        exec_path_ = path.substr(0, pos - 1);
-    }
-
+void ZorroWebsocketProxy::run() {
     if (!own_shm_) {
         auto owner = owner_pid_->load(std::memory_order_relaxed);
         if (owner) {
@@ -164,7 +176,7 @@ void ZorroWebsocketProxy::run(const char* executable_path, int32_t logLevel) {
             std::this_thread::yield();
         }
 
-        if (shutdown_time_ && (get_timestamp() - shutdown_time_) >= 15000) {
+        if (shutdown_time_ && (get_timestamp() - shutdown_time_) >= 10000) {
             run_.store(false, std::memory_order_release);
             break;
         }
@@ -216,7 +228,6 @@ void ZorroWebsocketProxy::handleClientRegistration(Message& msg) {
     auto reg = reinterpret_cast<RegisterMessage*>(msg.data);
     lwsl_user("Register client %d connected, name: %s\n", msg.pid, reg->name);
     reg->server_pid = pid_;
-    clientSeen_ = true;
     shutdown_time_ = 0;
 
     auto it = clients_.find(msg.pid);
@@ -250,6 +261,7 @@ void ZorroWebsocketProxy::unregisterClient(uint32_t pid) {
 
         if (clients_.empty()) {
             lwsl_user("Last client disconnected. Shuting down...\n");
+            shutdown_time_ = get_timestamp();
         }
     }
 }
@@ -275,25 +287,29 @@ void ZorroWebsocketProxy::openWs(Message& msg) {
                 lwsl_user("Websocket %s already opened. id=%d, new=%d\n", req->url, id, req->new_connection);
                 msg.status.store(Message::Status::SUCCESS, std::memory_order_release);
                 return;
-            } 
+            }
         }
         
-        lwsl_user("Opening ws %s\n", req->url);
-        req->new_connection = true;
-        auto websocket = std::make_shared<Websocket>(this, pid_ * 10000 + (++websocket_id_), req->url);
-        auto b = websocket->open(msg.pid);
-        if (b) {
-            req->id = websocket->id();
-            websocket->clients().emplace(msg.pid);
-            websocketsByUrl_.emplace(req->url, websocket);
-            websocketsById_.emplace(websocket->id(), std::move(websocket));
-        }
-        msg.status.store(b ? Message::Status::SUCCESS : Message::Status::FAILED, std::memory_order_release);
+        openNewWs(msg, req);
     }
     else {
         snprintf(req->err, 256, "Client %d not found", msg.pid);
         msg.status.store(Message::Status::FAILED, std::memory_order_release);
     }
+}
+
+void ZorroWebsocketProxy::openNewWs(Message& msg, WsOpen* req) {
+    lwsl_user("Opening ws %s\n", req->url);
+    req->new_connection = true;
+    auto websocket = std::make_shared<Websocket>(this, pid_ * 10000 + (++websocket_id_), req->url);
+    auto b = websocket->open(msg.pid);
+    if (b) {
+        req->id = websocket->id();
+        websocket->clients().emplace(msg.pid);
+        websocketsByUrl_.emplace(req->url, websocket);
+        websocketsById_.emplace(websocket->id(), std::move(websocket));
+    }
+    msg.status.store(b ? Message::Status::SUCCESS : Message::Status::FAILED, std::memory_order_release);
 }
 
 void ZorroWebsocketProxy::closeWs(Message& msg) {
@@ -316,6 +332,7 @@ void ZorroWebsocketProxy::closeWs(uint32_t id, DWORD pid) {
             lwsl_user("WS client %d removed from ws id=%d\n", pid, id);
             if (websocket->clients_.empty()) {
                 lwsl_user("Close ws %s\n", it->second->url().c_str());
+                it->second->status_ = Websocket::Status::DISCONNECTING;
                 it->second->stop();
                 websocketsByUrl_.erase(it->second->url());
                 websocketsById_.erase(it);
@@ -363,10 +380,6 @@ void ZorroWebsocketProxy::sendMessage(uint64_t index, uint32_t size, uint64_t no
 
 bool ZorroWebsocketProxy::checkHeartbeats() {
     if (clients_.empty()) {
-        if (clientSeen_ && !isProcessRunning(L"Zorro.exe") && !shutdown_time_) {
-            lwsl_user("No Zorro running. Shuting down...\n");
-            shutdown_time_ = get_timestamp();
-        }
         return false;
     }
     auto now = get_timestamp();
@@ -381,6 +394,7 @@ bool ZorroWebsocketProxy::checkHeartbeats() {
 
             if (clients_.empty()) {
                 lwsl_user("Last client disconnected. Stop heartbeating...\n");
+                shutdown_time_ = get_timestamp();
             }
         }
         else {
@@ -428,7 +442,6 @@ void ZorroWebsocketProxy::onWsOpened(uint32_t id, DWORD initiator) {
     open->initiator = initiator;
     open->new_connection = true;
     sendMessage(index, size);
-    lwsl_user("send ws opened to client\n");
 }
 
 void ZorroWebsocketProxy::onWsClosed(uint32_t id) {
@@ -441,6 +454,8 @@ void ZorroWebsocketProxy::onWsClosed(uint32_t id) {
     auto idx = closed_sockets_.reserve();
     (*closed_sockets_[idx]) = id;
     closed_sockets_.publish(idx);
+
+    lwsl_user("ws %d closed\n", id);
 }
 
 void ZorroWebsocketProxy::onWsError(uint32_t id, const char* err, size_t len) {
