@@ -43,10 +43,14 @@ namespace websocket {
         ZorroWebsocketProxyClient(WebsocketProxyCallback* callback, std::string&& name, broker_error broker_err, broker_progress broker_prog);
         virtual ~ZorroWebsocketProxyClient();
 
-        void setLogger(log log_func) noexcept { log_ = log_func; }
+        void setLogger(log log_func = NoLog) noexcept {
+            log_ = log_func;
+        }
+
         DWORD serverId() const noexcept { return server_pid_; }
-        std::pair<uint32_t, bool> openWs(const std::string& url);
-        bool closeWs(uint32_t id = 0);
+
+        std::pair<uint32_t, bool> openWebSocket(const std::string& url);
+        bool closeWebSocket(uint32_t id = 0);
         void send(uint32_t id, const char* msg, size_t len);
 
     private:
@@ -57,9 +61,10 @@ namespace websocket {
         bool connect();
         bool spawnWebsocketsProxyServer();
         bool _register();
-        void unregister();
+        void unregister(bool destroying = false);
         void sendMessage(Message* msg, uint64_t index, uint32_t size);
-        bool waitForResponse(Message* msg, uint32_t timeout = 10000) const;
+        bool waitForResponse(Message* msg, uint32_t timeout = 10000);
+        bool sendHeartbeat(uint64_t now);
         void doWork();
         void handleWsOpen(Message* msg);
         void handleWsClose(Message* msg);
@@ -97,10 +102,10 @@ namespace websocket {
         uint32_t id_ = 0;
         const DWORD pid_;
         std::atomic<DWORD> server_pid_ = 0;
-        std::atomic_bool run_{ true };
+        std::atomic_bool run_{ false };
         std::string name_;
         std::unordered_set<uint32_t> websockets_;
-        std::thread worker_thread_;
+        std::unique_ptr<std::thread> worker_thread_;
         log log_ = NoLog;
     };
 

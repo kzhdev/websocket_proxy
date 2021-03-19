@@ -20,22 +20,20 @@ ZorroWebsocketProxyClient::ZorroWebsocketProxyClient(WebsocketProxyCallback* cal
     , broker_progress_(broker_prog)
     , pid_(GetCurrentProcessId())
     , name_(std::move(name))
-    , worker_thread_([this]() { doWork(); })
-{}
+{
+}
 
 ZorroWebsocketProxyClient::~ZorroWebsocketProxyClient() {
     if (server_pid_.load(std::memory_order_relaxed)) {
         unregister();
     }
-    run_.store(false, std::memory_order_release);
-    if (worker_thread_.joinable()) {
-        // join causes dead lock
-        //worker_thread_.join();
-        worker_thread_.detach();
-    }
 }
 
 bool ZorroWebsocketProxyClient::connect() {
+    if (!worker_thread_) {
+        worker_thread_ = std::make_unique<std::thread>([this]() { doWork(); });
+    }
+
     if (!spawnWebsocketsProxyServer()) {
         log_(L_ERROR, "Failed to spawn websocket proxy");
         return false;
@@ -50,14 +48,17 @@ void ZorroWebsocketProxyClient::sendMessage(Message* msg, uint64_t index, uint32
     last_heartbeat_time_ = get_timestamp();
 }
 
-bool ZorroWebsocketProxyClient::waitForResponse(Message* msg, uint32_t timeout) const {
+bool ZorroWebsocketProxyClient::waitForResponse(Message* msg, uint32_t timeout) {
     auto start = get_timestamp();
-    while (msg->status.load(std::memory_order_relaxed()) == Message::Status::PENDING) {
-        if ((get_timestamp() - start) > timeout) {
+    while (msg->status.load(std::memory_order_relaxed) == Message::Status::PENDING) {
+        auto now = get_timestamp();
+        if ((now - start) > timeout) {
             return false;
         }
         broker_progress_(1);
-        std::this_thread::yield();
+        if (!sendHeartbeat(now)) {
+            std::this_thread::yield();
+        }
     }
     return true;
 }
@@ -138,15 +139,26 @@ bool ZorroWebsocketProxyClient::_register() {
     return true;
 }
 
-void ZorroWebsocketProxyClient::unregister() {
+void ZorroWebsocketProxyClient::unregister(bool destroying) {
     auto [msg, index, size] = reserveMessage();
     msg->type = Message::Type::Unregister;
     sendMessage(msg, index, size);
     server_pid_.store(0, std::memory_order_release);
     log_(L_INFO, "Unregistered, pid=" + std::to_string(pid_));
+    run_.store(false, std::memory_order_release);
+    if (worker_thread_ && worker_thread_->joinable()) {
+        if (destroying) {
+#ifdef _WIN32
+            worker_thread_->detach();
+            return;
+#endif // _WIN32
+        }
+        worker_thread_->join();
+        worker_thread_.reset();
+    }
 }
 
-std::pair<uint32_t, bool> ZorroWebsocketProxyClient::openWs(const std::string& url) {
+std::pair<uint32_t, bool> ZorroWebsocketProxyClient::openWebSocket(const std::string& url) {
     if (url.size() > 255) {
         brokerError("URL is to long. limit is 255 character");
         return std::make_pair(0, false);
@@ -181,13 +193,18 @@ std::pair<uint32_t, bool> ZorroWebsocketProxyClient::openWs(const std::string& u
     return std::make_pair(req->id, req->new_connection);
 }
 
-bool ZorroWebsocketProxyClient::closeWs(uint32_t id) {
+bool ZorroWebsocketProxyClient::closeWebSocket(uint32_t id) {
     auto [msg, index, size] = reserveMessage<WsClose>();
     msg->type = Message::Type::CloseWs;
     auto req = reinterpret_cast<WsClose*>(msg->data);
     req->id = !id ? id_ : id;
     log_(L_INFO, "Close ws " + std::to_string(req->id));
     sendMessage(msg, index, size);
+    if (!waitForResponse(msg)) {
+        log_(L_DEBUG, "Close ws timedout");
+        return false;
+    }
+    unregister();
     return true;
 }
 
@@ -202,6 +219,7 @@ void ZorroWebsocketProxyClient::send(uint32_t id, const char* data, size_t len) 
 }
 
 void ZorroWebsocketProxyClient::doWork() {
+    run_.store(true, std::memory_order_release);
     while (run_.load(std::memory_order_relaxed)) {
         auto server_pid = server_pid_.load(std::memory_order_relaxed);
         if (!server_pid) {
@@ -234,13 +252,7 @@ void ZorroWebsocketProxyClient::doWork() {
             }
         }
 
-        bool heartbeat_sent = false;
-        if (server_pid && (now - last_heartbeat_time_) > HEARTBEAT_INTERVAL) {
-            auto [msg, index, size] = reserveMessage();
-            msg->type = Message::Type::Heartbeat;
-            sendMessage(msg, index, size);
-            heartbeat_sent = true;
-        }
+        bool heartbeat_sent = sendHeartbeat(now);
 
         if (!result.first) {
             if (last_server_heartbeat_time_ && (now - last_server_heartbeat_time_) > HEARTBEAT_TIMEOUT) {
@@ -259,6 +271,16 @@ void ZorroWebsocketProxyClient::doWork() {
             }
         }
     }
+}
+
+bool ZorroWebsocketProxyClient::sendHeartbeat(uint64_t now) {
+    if (server_pid_.load(std::memory_order_relaxed) && (now - last_heartbeat_time_) > HEARTBEAT_INTERVAL) {
+        auto [msg, index, size] = reserveMessage();
+        msg->type = Message::Type::Heartbeat;
+        sendMessage(msg, index, size);
+        return true;
+    }
+    return false;
 }
 
 void ZorroWebsocketProxyClient::handleWsOpen(Message* msg) {
