@@ -51,6 +51,8 @@ namespace websocket {
 
         std::pair<uint32_t, bool> openWebSocket(const std::string& url);
         bool closeWebSocket(uint32_t id = 0);
+        bool subscribe(uint32_t id, const std::string& symbol, const char* subscription_request, uint32_t request_len, bool& existing);
+        bool unsubscribe(uint32_t id, const std::string& symbol, const char* unsubscription_request, uint32_t request_len);
         void send(uint32_t id, const char* msg, size_t len);
 
     private:

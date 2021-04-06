@@ -205,6 +205,13 @@ void ZorroWebsocketProxy::handleClientMessage(Message& msg) {
     case Message::Type::WsRequest:
         sendWsRequest(msg);
         break;
+    case Message::Type::Subscribe:
+        handleSubscribe(msg);
+        break;
+
+    case Message::Type::Unsubscribe:
+        handleUnsubscribe(msg);
+        break;
 
     case Message::Type::WsData:
     case Message::Type::WsError:
@@ -284,7 +291,7 @@ void ZorroWebsocketProxy::openWs(Message& msg) {
                 req->id = id;
                 req->new_connection = (state == Websocket::Status::CONNECTING);
                 onWsOpened(id, msg.pid);
-                lwsl_user("Websocket %s already opened. id=%d, new=%d\n", req->url, id, req->new_connection);
+                lwsl_user("Websocket %s already opened. id=%d, new=%d, client=%d\n", req->url, id, req->new_connection, msg.pid);
                 msg.status.store(Message::Status::SUCCESS, std::memory_order_release);
                 return;
             }
@@ -299,7 +306,7 @@ void ZorroWebsocketProxy::openWs(Message& msg) {
 }
 
 void ZorroWebsocketProxy::openNewWs(Message& msg, WsOpen* req) {
-    lwsl_user("Opening ws %s\n", req->url);
+    lwsl_user("Opening ws %s, clinet=%d\n", req->url, msg.pid);
     req->new_connection = true;
     auto websocket = std::make_shared<Websocket>(this, pid_ * 10000 + (++websocket_id_), req->url);
     auto b = websocket->open(msg.pid);
@@ -343,6 +350,70 @@ void ZorroWebsocketProxy::closeWs(uint32_t id, DWORD pid) {
         lwsl_user("Close ws. socket not found id=%d\n", id);
     }
 }
+void ZorroWebsocketProxy::handleSubscribe(Message& msg) {
+    auto req = reinterpret_cast<WsSubscription*>(msg.data);
+    auto client = getClient(msg.pid);
+    if (client) {
+        lwsl_user("Subscribe %s client=%d ws_id=%d\n", req->symbol, msg.pid, req->id);
+        auto it = websocketsById_.find(req->id);
+        if (it != websocketsById_.end()) {
+            auto& subscriptions = it->second->subscriptions_;
+            auto sub_it = subscriptions.find(req->symbol);
+            if (sub_it == subscriptions.end()) {
+                subscriptions.emplace(req->symbol, 1);
+                if (it->second->send(req->request, req->request_len)) {
+                    msg.status.store(Message::Status::SUCCESS, std::memory_order_release);
+                    return;
+                }
+            }
+            else {
+                ++sub_it->second;
+                req->existing = true;
+                msg.status.store(Message::Status::SUCCESS, std::memory_order_release);
+                return;
+            }
+        }
+        else {
+            lwsl_user("Websocket not found. id=\n", req->id);
+        }
+    }
+    else {
+        lwsl_user("Client not found. pid=\n", msg.pid);
+    }
+    msg.status.store(Message::Status::FAILED, std::memory_order_release);
+}
+
+void ZorroWebsocketProxy::handleUnsubscribe(Message& msg) {
+    auto req = reinterpret_cast<WsSubscription*>(msg.data);
+    auto client = getClient(msg.pid);
+    if (client) {
+        lwsl_user("Unsubscribe %s client=%d ws_id=%d\n", req->symbol, msg.pid, req->id);
+        auto it = websocketsById_.find(req->id);
+        if (it != websocketsById_.end()) {
+            auto& subscriptions = it->second->subscriptions_;
+            auto sub_it = subscriptions.find(req->symbol);
+            if (sub_it != subscriptions.end()) {
+                if (--sub_it->second == 0) {
+                    subscriptions.erase(sub_it);
+                    if (!it->second->send(req->request, req->request_len)) {
+                        msg.status.store(Message::Status::FAILED, std::memory_order_release);
+                        return;
+                    }
+                }
+            }
+            else {
+                lwsl_user("Subscription not find. symbol=%s ws_id=%d\n", req->symbol, req->id);
+            }
+        }
+        else {
+            lwsl_user("Websocket not found. id=\n", req->id);
+        }
+    }
+    else {
+        lwsl_user("Client not found. pid=\n", msg.pid);
+    }
+    msg.status.store(Message::Status::SUCCESS, std::memory_order_release);
+}
 
 void ZorroWebsocketProxy::sendWsRequest(Message& msg) {
     auto req = reinterpret_cast<WsRequest*>(msg.data);
@@ -352,6 +423,9 @@ void ZorroWebsocketProxy::sendWsRequest(Message& msg) {
         auto it = websocketsById_.find(req->id);
         if (it != websocketsById_.end()) {
             if (it->second->send(req->data, req->len)) {
+#ifdef _DEBUG
+                lwsl_user("--> %.*s\n", req->len, req->data);
+#endif
                 msg.status.store(Message::Status::SUCCESS, std::memory_order_release);
                 return;
             }
@@ -413,6 +487,7 @@ bool ZorroWebsocketProxy::sendHeartbeat(uint64_t now) {
     if ((now - last_heartbeat_time_) > HEARTBEAT_INTERVAL) {
         auto [msg, index, size] = reserveMessage();
         msg->type = Message::Type::Heartbeat;
+        lwsl_user(".\n");
         sendMessage(index, size, now);
         return true;
     }
@@ -481,5 +556,7 @@ void ZorroWebsocketProxy::onWsData(uint32_t id, const char* data, size_t len, si
         memcpy(d->data, data, len);
     }
     sendMessage(index, size);
-    //lwsl_user("<-- %.*s\n", len, data);
+#ifdef _DEBUG
+    lwsl_user("<-- %.*s\n", len, data);
+#endif
 }

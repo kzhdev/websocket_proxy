@@ -15,6 +15,7 @@ namespace websocket {
         uint32_t id_ = 0;
         DWORD initiator_ = 0;
         std::unordered_set<DWORD> clients_;
+        std::unordered_map<std::string, uint32_t> subscriptions_;
 
         enum Status : uint8_t {
             CONNECTING,
@@ -53,16 +54,19 @@ namespace websocket {
                 return false;
             }
 
-            auto retry = 150;
-            while (retry--) {
+            lwsl_user("Wait for connected.\n");
+
+            auto start = get_timestamp();
+            do {
                 auto status = status_.load(std::memory_order_relaxed);
                 if (status != Status::CONNECTING) {
                     break;
                 }
                 if (!proxy_->sendHeartbeat()) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    std::this_thread::yield();
+                    //std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 }
-            }
+            } while ((get_timestamp() - start) < 15000);
             return status_ == Status::CONNECTED;
         }
 

@@ -10,7 +10,7 @@ namespace websocket {
 #define CLIENT_TO_SERVER_QUEUE "Global\\ZorroWebsocketProxy_client_server"
 #define SERVER_TO_CLIENT_QUEUE "Global\\ZorroWebsocketProxy_server_client"
 #define HEARTBEAT_INTERVAL 500  // 500ms
-#define HEARTBEAT_TIMEOUT 2000 // 2s
+#define HEARTBEAT_TIMEOUT 15000 // 15s
 
 #pragma pack(1)
     struct Message {
@@ -23,6 +23,8 @@ namespace websocket {
             WsRequest,
             WsData,
             WsError,
+            Subscribe,
+            Unsubscribe,
         };
 
         enum Status : uint8_t {
@@ -55,6 +57,14 @@ namespace websocket {
 
     struct WsClose {
         uint32_t id;
+    };
+
+    struct WsSubscription {
+        char symbol[256];
+        uint32_t id;
+        size_t request_len;
+        bool existing;
+        char request[0];
     };
 
     struct WsRequest {

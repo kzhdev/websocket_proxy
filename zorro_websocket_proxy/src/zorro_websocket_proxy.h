@@ -58,6 +58,8 @@ namespace websocket {
         void closeWs(Message& msg);
         void closeWs(uint32_t id, DWORD pid);
         void sendWsRequest(Message& msg);
+        void handleSubscribe(Message& msg);
+        void handleUnsubscribe(Message& msg);
         ClientInfo* getClient(DWORD pid);
         bool checkHeartbeats();
         bool sendHeartbeat();

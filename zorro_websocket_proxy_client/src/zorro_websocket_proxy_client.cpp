@@ -208,6 +208,35 @@ bool ZorroWebsocketProxyClient::closeWebSocket(uint32_t id) {
     return true;
 }
 
+bool ZorroWebsocketProxyClient::subscribe(uint32_t id, const std::string& symbol, const char* subscription_request, uint32_t request_len, bool& existing) {
+    auto [msg, index, size] = reserveMessage<WsSubscription>(request_len);
+    msg->type = Message::Type::Subscribe;
+    auto req = reinterpret_cast<WsSubscription*>(msg->data);
+    req->request_len = request_len;
+    req->id = id;
+    memcpy(&req->symbol[0], symbol.c_str(), symbol.size());
+    memcpy(req->request, subscription_request, request_len);
+    sendMessage(msg, index, size);
+    if (!waitForResponse(msg)) {
+        log_(L_DEBUG, "Subscribe " + symbol + " timedout");
+        return false;
+    }
+    return true;
+}
+
+bool ZorroWebsocketProxyClient::unsubscribe(uint32_t id, const std::string& symbol, const char* unsubscription_request, uint32_t request_len) {
+    auto [msg, index, size] = reserveMessage<WsSubscription>(request_len);
+    msg->type = Message::Type::Unsubscribe;
+    auto req = reinterpret_cast<WsSubscription*>(msg->data);
+    req->request_len = request_len;
+    req->id = id;
+    req->existing = false;
+    memcpy(&req->symbol[0], symbol.c_str(), symbol.size());
+    memcpy(req->request, unsubscription_request, request_len);
+    sendMessage(msg, index, size);
+    return true;
+}
+
 void ZorroWebsocketProxyClient::send(uint32_t id, const char* data, size_t len) {
     auto [msg, index, size] = reserveMessage<WsRequest>(len);
     msg->type = Message::Type::WsRequest;
@@ -230,6 +259,7 @@ void ZorroWebsocketProxyClient::doWork() {
         auto now = get_timestamp();
         auto result = server_queue_->read(server_queue_index_);
         if (result.first) {
+            log_(L_DEBUG, ".");
             auto msg = reinterpret_cast<Message*>(result.first);
             //log_(L_DEBUG, std::to_string(msg->type));
             last_server_heartbeat_time_ = now;
