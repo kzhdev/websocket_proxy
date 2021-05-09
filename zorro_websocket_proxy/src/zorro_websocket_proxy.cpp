@@ -8,7 +8,7 @@
 
 #include "websocket.h"
 
-#define SHM_OWNER TEXT("Global\\ZorroWebsocketProxy_shm_owner")
+#define SHM_OWNER TEXT("Local\\ZorroWebsocketProxy_shm_owner")
 
 using namespace zorro::websocket;
 
@@ -208,16 +208,14 @@ void ZorroWebsocketProxy::handleClientMessage(Message& msg) {
     case Message::Type::Subscribe:
         handleSubscribe(msg);
         break;
-
     case Message::Type::Unsubscribe:
         handleUnsubscribe(msg);
         break;
-
     case Message::Type::WsData:
     case Message::Type::WsError:
         break;
     default:
-        lwsl_user("Unknown msg, type=\n", msg.type);
+        lwsl_user("Unknown msg, type=%d\n", msg.type);
         break;
     }
 }

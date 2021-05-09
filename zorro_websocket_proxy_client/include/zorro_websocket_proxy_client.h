@@ -104,7 +104,7 @@ namespace websocket {
         uint32_t id_ = 0;
         const DWORD pid_;
         std::atomic<DWORD> server_pid_ = 0;
-        std::atomic_bool run_{ false };
+        std::shared_ptr<std::atomic_bool> run_;
         std::string name_;
         std::unordered_set<uint32_t> websockets_;
         std::unique_ptr<std::thread> worker_thread_;

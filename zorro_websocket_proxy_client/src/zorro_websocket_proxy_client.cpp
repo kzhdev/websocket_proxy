@@ -25,7 +25,7 @@ ZorroWebsocketProxyClient::ZorroWebsocketProxyClient(WebsocketProxyCallback* cal
 
 ZorroWebsocketProxyClient::~ZorroWebsocketProxyClient() {
     if (server_pid_.load(std::memory_order_relaxed)) {
-        unregister();
+        unregister(true);
     }
 }
 
@@ -145,15 +145,20 @@ void ZorroWebsocketProxyClient::unregister(bool destroying) {
     sendMessage(msg, index, size);
     server_pid_.store(0, std::memory_order_release);
     log_(L_INFO, "Unregistered, pid=" + std::to_string(pid_));
-    run_.store(false, std::memory_order_release);
     if (worker_thread_ && worker_thread_->joinable()) {
+        run_->store(false, std::memory_order_release);
         if (destroying) {
 #ifdef _WIN32
             worker_thread_->detach();
             return;
 #endif // _WIN32
         }
+//#ifdef _WIN32
+        //worker_thread_->detach();
+//#else
         worker_thread_->join();
+//#endif
+        run_.reset();
         worker_thread_.reset();
     }
 }
@@ -178,8 +183,8 @@ std::pair<uint32_t, bool> ZorroWebsocketProxyClient::openWebSocket(const std::st
     
     sendMessage(msg, index, size);
 
-    if (!waitForResponse(msg)) {
-        log_(L_DEBUG, "oepn ws timedout");
+    if (!waitForResponse(msg, 30000)) {
+        log_(L_DEBUG, "open ws timedout");
         return std::make_pair(0, false);
     }
 
@@ -248,8 +253,9 @@ void ZorroWebsocketProxyClient::send(uint32_t id, const char* data, size_t len) 
 }
 
 void ZorroWebsocketProxyClient::doWork() {
-    run_.store(true, std::memory_order_release);
-    while (run_.load(std::memory_order_relaxed)) {
+    run_ = std::make_shared<std::atomic_bool>(true);
+    std::shared_ptr<std::atomic_bool> run = run_;
+    while (run->load(std::memory_order_relaxed)) {
         auto server_pid = server_pid_.load(std::memory_order_relaxed);
         if (!server_pid) {
             // not connected yet
@@ -259,7 +265,7 @@ void ZorroWebsocketProxyClient::doWork() {
         auto now = get_timestamp();
         auto result = server_queue_->read(server_queue_index_);
         if (result.first) {
-            log_(L_DEBUG, ".");
+            //log_(L_DEBUG, ".");
             auto msg = reinterpret_cast<Message*>(result.first);
             //log_(L_DEBUG, std::to_string(msg->type));
             last_server_heartbeat_time_ = now;
@@ -301,6 +307,7 @@ void ZorroWebsocketProxyClient::doWork() {
             }
         }
     }
+    log_(L_DEBUG, "WebsocketProxyClient work thread exit");
 }
 
 bool ZorroWebsocketProxyClient::sendHeartbeat(uint64_t now) {
