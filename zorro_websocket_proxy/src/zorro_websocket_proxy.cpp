@@ -8,7 +8,7 @@
 
 #include "websocket.h"
 
-#define SHM_OWNER TEXT("Local\\ZorroWebsocketProxy_shm_owner")
+#define SHM_OWNER TEXT("ZorroWebsocketProxy_shm_owner")
 
 using namespace zorro::websocket;
 

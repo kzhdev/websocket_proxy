@@ -7,8 +7,8 @@
 namespace zorro {
 namespace websocket {
 
-#define CLIENT_TO_SERVER_QUEUE "Local\\ZorroWebsocketProxy_client_server"
-#define SERVER_TO_CLIENT_QUEUE "Local\\ZorroWebsocketProxy_server_client"
+#define CLIENT_TO_SERVER_QUEUE "ZorroWebsocketProxy_client_server"
+#define SERVER_TO_CLIENT_QUEUE "ZorroWebsocketProxy_server_client"
 #define HEARTBEAT_INTERVAL 500  // 500ms
 #define HEARTBEAT_TIMEOUT 15000 // 15s
 
