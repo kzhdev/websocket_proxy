@@ -485,7 +485,6 @@ bool ZorroWebsocketProxy::sendHeartbeat(uint64_t now) {
     if ((now - last_heartbeat_time_) > HEARTBEAT_INTERVAL) {
         auto [msg, index, size] = reserveMessage();
         msg->type = Message::Type::Heartbeat;
-        lwsl_user(".\n");
         sendMessage(index, size, now);
         return true;
     }
