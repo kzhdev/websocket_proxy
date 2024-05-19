@@ -1,7 +1,7 @@
 /*
  * libwebsockets - small server side websockets and web server implementation
  *
- * Copyright (C) 2010 - 2019 Andy Green <andy@warmcat.com>
+ * Copyright (C) 2010 - 2021 Andy Green <andy@warmcat.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -236,6 +236,12 @@
 #define LWS_SERVER_OPTION_SDEVENT			 	 (1ll << 37)
 	/**< (CTX) Use sd-event loop */
 
+#define LWS_SERVER_OPTION_ULOOP					 (1ll << 38)
+	/**< (CTX) Use libubox / uloop event loop */
+
+#define LWS_SERVER_OPTION_DISABLE_TLS_SESSION_CACHE		 (1ll << 39)
+	/**< (VHOST) Disallow use of client tls caching (on by default) */
+
 
 	/****** add new things just above ---^ ******/
 
@@ -447,6 +453,8 @@ struct lws_context_creation_info {
 	int simultaneous_ssl_restriction;
 	/**< CONTEXT: 0 (no limit) or limit of simultaneous SSL sessions
 	 * possible.*/
+	int simultaneous_ssl_handshake_restriction;
+	/**< CONTEXT: 0 (no limit) or limit of simultaneous SSL handshakes ongoing */
 	int ssl_info_event_mask;
 	/**< VHOST: mask of ssl events to be reported on LWS_CALLBACK_SSL_INFO
 	 * callback for connections on this vhost.  The mask values are of
@@ -530,6 +538,17 @@ struct lws_context_creation_info {
 	  * implementation for the one provided by provided_ssl_ctx.
 	  * Libwebsockets no longer is responsible for freeing the context
 	  * if this option is selected. */
+#else /* WITH_MBEDTLS */
+	const char *mbedtls_client_preload_filepath;
+	/**< CONTEXT: If NULL, no effect.  Otherwise it should point to a
+	 * filepath where every created client SSL_CTX is preloaded from the
+	 * system trust bundle.
+	 *
+	 * This sets a processwide variable that affects all contexts.
+	 *
+	 * Requires that the mbedtls provides mbedtls_x509_crt_parse_file(),
+	 * else disabled.
+	 */
 #endif
 #endif
 
@@ -567,6 +586,15 @@ struct lws_context_creation_info {
 	/**< VHOST: seconds to allow a client to hold an ah without using it.
 	 * 0 defaults to 10s. */
 #endif /* WITH_NETWORK */
+
+#if defined(LWS_WITH_TLS_SESSIONS)
+	uint32_t			tls_session_timeout;
+	/**< VHOST: seconds until timeout/ttl for newly created sessions.
+	 * 0 means default timeout (defined per protocol, usually 300s). */
+	uint32_t			tls_session_cache_max;
+	/**< VHOST: 0 for default limit of 10, or the maximum number of
+	 * client tls sessions we are willing to cache */
+#endif
 
 	gid_t gid;
 	/**< CONTEXT: group id to change to after setting listen socket,
@@ -606,7 +634,10 @@ struct lws_context_creation_info {
 	const char *vhost_name;
 	/**< VHOST: name of vhost, must match external DNS name used to
 	 * access the site, like "warmcat.com" as it's used to match
-	 * Host: header and / or SNI name for SSL. */
+	 * Host: header and / or SNI name for SSL.
+	 * CONTEXT: NULL, or the name to associate with the context for
+	 * context-specific logging
+	 */
 #if defined(LWS_WITH_PLUGINS)
 	const char * const *plugin_dirs;
 	/**< CONTEXT: NULL, or NULL-terminated array of directories to
@@ -795,17 +826,9 @@ struct lws_context_creation_info {
 	 */
 
 #endif /* PEER_LIMITS */
-#if defined(LWS_WITH_UDP)
-	uint8_t udp_loss_sim_tx_pc;
-	/**< CONTEXT: percentage of udp writes we could have performed
-	 * to instead not do, in order to simulate and test udp retry flow */
-	uint8_t udp_loss_sim_rx_pc;
-	/**< CONTEXT: percentage of udp reads we actually received
-	 * to make disappear, in order to simulate and test udp retry flow */
-#endif
 
 #if defined(LWS_WITH_SYS_FAULT_INJECTION)
-	lws_fi_ctx_t				*fi;
+	lws_fi_ctx_t				fic;
 	/**< CONTEXT | VHOST: attach external Fault Injection context to the
 	 * lws_context or vhost.  If creating the context + default vhost in
 	 * one step, only the context binds to \p fi.  When creating a vhost
@@ -836,14 +859,58 @@ struct lws_context_creation_info {
 
 #if defined(LWS_WITH_SYS_METRICS)
 	const struct lws_metric_policy		*metrics_policies;
-	/**< non-SS policy metrics policies */
+	/**< CONTEXT: non-SS policy metrics policies */
 	const char				*metrics_prefix;
-	/**< prefix for this context's metrics, used to distinguish metrics
-	 * pooled from different processes / applications, so, eg what would
-	 * be "cpu.svc" if this is NULL becomes "myapp.cpu.svc" is this is
+	/**< CONTEXT: prefix for this context's metrics, used to distinguish
+	 * metrics pooled from different processes / applications, so, eg what
+	 * would be "cpu.svc" if this is NULL becomes "myapp.cpu.svc" is this is
 	 * set to "myapp".  Policies are applied using the name with the prefix,
 	 * if present.
 	 */
+#endif
+
+	int					fo_listen_queue;
+	/**< VHOST: 0 = no TCP_FASTOPEN, nonzero = enable TCP_FASTOPEN if the
+	 * platform supports it, with the given queue length for the listen
+	 * socket.
+	 */
+
+	const struct lws_plugin_evlib		*event_lib_custom;
+	/**< CONTEXT: If non-NULL, override event library selection so it uses
+	 * this custom event library implementation, instead of default internal
+	 * loop.  Don't set any other event lib context creation flags in that
+	 * case. it will be used automatically.  This is useful for integration
+	 * where an existing application is using its own handrolled event loop
+	 * instead of an event library, it provides a way to allow lws to use
+	 * the custom event loop natively as if it were an "event library".
+	 */
+
+#if defined(LWS_WITH_TLS_JIT_TRUST)
+	size_t					jitt_cache_max_footprint;
+	/**< CONTEXT: 0 for no limit, else max bytes used by JIT Trust cache...
+	 * LRU items are evicted to keep under this limit */
+	int					vh_idle_grace_ms;
+	/**< CONTEXT: 0 for default of 5000ms, or number of ms JIT Trust vhosts
+	 * are allowed to live without active connections using them. */
+#endif
+
+	lws_log_cx_t				*log_cx;
+	/**< CONTEXT: NULL to use the default, process-scope logging context,
+	 * else a specific logging context to associate with this context */
+
+#if defined(LWS_WITH_CACHE_NSCOOKIEJAR) && defined(LWS_WITH_CLIENT)
+	const char				*http_nsc_filepath;
+	/**< CONTEXT: Filepath to use for http netscape cookiejar file */
+
+	size_t					http_nsc_heap_max_footprint;
+	/**< CONTEXT: 0, or limit in bytes for heap usage of memory cookie
+	 * cache */
+	size_t					http_nsc_heap_max_items;
+	/**< CONTEXT: 0, or the max number of items allowed in the cookie cache
+	 * before destroying lru items to keep it under the limit */
+	size_t					http_nsc_heap_max_payload;
+	/**< CONTEXT: 0, or the maximum size of a single cookie we are able to
+	 * handle */
 #endif
 
 	/* Add new things just above here ---^
@@ -1258,13 +1325,7 @@ struct lws_http_mount {
 
 	/* Add new things just above here ---^
 	 * This is part of the ABI, don't needlessly break compatibility
-	 *
-	 * The below is to ensure later library versions with new
-	 * members added above will see 0 (default) even if the app
-	 * was not built against the newer headers.
 	 */
-
-	void *_unused[2]; /**< dummy */
 };
 
 ///@}

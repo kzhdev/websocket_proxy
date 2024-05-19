@@ -1,7 +1,7 @@
 /*
  * libwebsockets - small server side websockets and web server implementation
  *
- * Copyright (C) 2010 - 2019 Andy Green <andy@warmcat.com>
+ * Copyright (C) 2010 - 2021 Andy Green <andy@warmcat.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -90,6 +90,15 @@ enum lws_client_connect_ssl_connection_flags {
 	LCCSCF_IP_LOW_COST			= (1 << 27),
 	/**< set the "minimize monetary cost" bit on the IP packets of this
 	 *   connection */
+	LCCSCF_CONMON				= (1 << 28),
+	/**< If LWS_WITH_CONMON enabled for build, keeps a copy of the
+	 * getaddrinfo results so they can be queried subsequently */
+	LCCSCF_ACCEPT_TLS_DOWNGRADE_REDIRECTS	= (1 << 29),
+	/**< By default lws rejects https redirecting to http.  Set this
+	 * flag on the client connection to allow it. */
+	LCCSCF_CACHE_COOKIES			= (1 << 30),
+	/**< If built with -DLWS_WITH_CACHE_NSCOOKIEJAR, store and reapply
+	 * http cookies in a Netscape Cookie Jar on this connection */
 };
 
 /** struct lws_client_connect_info - parameters to connect with when using
@@ -105,7 +114,8 @@ struct lws_client_connect_info {
 	int ssl_connection;
 	/**< 0, or a combination of LCCSCF_ flags */
 	const char *path;
-	/**< uri path */
+	/**< URI path. Prefix with + for a UNIX socket. (+@ for
+     * a Linux abstract-namespace socket) */
 	const char *host;
 	/**< content of host header */
 	const char *origin;
@@ -203,15 +213,26 @@ struct lws_client_connect_info {
 #endif
 
 #if defined(LWS_WITH_SYS_FAULT_INJECTION)
-	lws_fi_ctx_t				*fi;
+	lws_fi_ctx_t				fic;
 	/**< Attach external Fault Injection context to the client wsi,
 	 * hierarchy is wsi -> vhost -> context */
 #endif
+	/* for convenience, available when FI disabled in build */
+	const char				*fi_wsi_name;
+	/**< specific Fault Injection namespace name for wsi created for this
+	 * connection, allows targeting by "wsi=XXX/..." if you give XXX here.
+	 */
 
-	uint16_t	keep_warm_secs;
+	uint16_t				keep_warm_secs;
 	/**< 0 means 5s.  If the client connection to the endpoint becomes idle,
 	 * defer closing it for this many seconds in case another outgoing
 	 * connection to the same endpoint turns up.
+	 */
+
+	lws_log_cx_t				*log_cx;
+	/**< NULL to use lws_context log context, else a pointer to a log
+	 * context template to take a copy of for this wsi.  Used to isolate
+	 * wsi-specific logs into their own stream or file.
 	 */
 
 	/* Add new things just above here ---^
@@ -292,6 +313,7 @@ lws_http_client_read(struct lws *wsi, char **buf, int *len);
  * \param wsi: client connection
  *
  * Returns the last server response code, eg, 200 for client http connections.
+ * If there is no valid response, it will return 0.
  *
  * You should capture this during the LWS_CALLBACK_ESTABLISHED_CLIENT_HTTP
  * callback, because after that the memory reserved for storing the related
@@ -370,5 +392,22 @@ lws_client_http_multipart(struct lws *wsi, const char *name,
  */
 LWS_VISIBLE LWS_EXTERN int
 lws_http_basic_auth_gen(const char *user, const char *pw, char *buf, size_t len);
+
+/**
+ * lws_tls_session_is_reused() - returns nonzero if tls session was cached
+ *
+ * \param wsi: the wsi
+ *
+ * Returns zero if the tls session is fresh, else nonzero if the tls session was
+ * taken from the cache.  If lws is built with LWS_WITH_TLS_SESSIONS and the vhost
+ * was created with the option LWS_SERVER_OPTION_ENABLE_TLS_SESSION_CACHE, then
+ * on full tls session establishment of a client connection, the session is added
+ * to the tls cache.
+ *
+ * This lets you find out if your session was new (0) or from the cache (nonzero),
+ * it'a mainly useful for stats and testing.
+ */
+LWS_VISIBLE LWS_EXTERN int
+lws_tls_session_is_reused(struct lws *wsi);
 
 ///@}

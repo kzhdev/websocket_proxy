@@ -826,6 +826,15 @@ enum lws_callback_reasons {
 	 * destroyed.  in is the child wsi.
 	 */
 
+	LWS_CALLBACK_CONNECTING					= 105,
+	/**< Called before a socketfd is about to connect().  In is the
+	 * socketfd, cast to a (void *), if on a platform where the socketfd
+	 * is an int, recover portably using (lws_sockfd_type)(intptr_t)in.
+	 *
+	 * It's also called in SOCKS5 or http_proxy cases where the socketfd is
+	 * going to try to connect to its proxy.
+	 */
+
 	/* ---------------------------------------------------------------------
 	 * ----- Callbacks related to TLS certificate management -----
 	 */
@@ -869,8 +878,18 @@ enum lws_callback_reasons {
 	 * close the wsi.
 	 */
 	LWS_CALLBACK_MQTT_RESEND				= 210,
-	/**< In QoS1, this callback is generated instead of the _ACK one if
-	 * we timed out waiting for a PUBACK and we must resend the message.
+	/**< In QoS1 or QoS2, this callback is generated instead of the _ACK one
+	 * if we timed out waiting for a PUBACK or a PUBREC, and we must resend
+	 * the message.  Return nonzero to close the wsi.
+	 */
+	LWS_CALLBACK_MQTT_UNSUBSCRIBE_TIMEOUT			= 211,
+	/**< When a UNSUBSCRIBE is sent, this callback is generated instead of
+	 * the _UNSUBSCRIBED one if we timed out waiting for a UNSUBACK.
+	 * Return nonzero to close the wsi.
+	 */
+	LWS_CALLBACK_MQTT_SHADOW_TIMEOUT			= 212,
+	/**< When a Device Shadow is sent, this callback is generated if we
+	 * timed out waiting for a response from AWS IoT.
 	 * Return nonzero to close the wsi.
 	 */
 

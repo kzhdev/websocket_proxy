@@ -50,8 +50,9 @@ enum {
  * lws_metrics_tag allows your object to accumulate OpenMetrics-style
  * descriptive tags before accounting for it with a metrics object at the end.
  *
- * Tags should represent low entropy information, so, eg, http method name, not
- * eg, latency in us which is unlikely to be seen the same twice.
+ * Tags should represent low entropy information that is likely to repeat
+ * identically, so, eg, http method name, not eg, latency in us which is
+ * unlikely to be seen the same twice.
  *
  * Tags are just a list of name=value pairs, used for qualifying the final
  * metrics entry with decorations in additional dimensions.  For example,
@@ -60,11 +61,11 @@ enum {
  * transaction metrics entries with tags that can be queried on the metrics
  * backend to get the finer-grained information.
  *
+ * http_srv{code="404",mount="/",method="GET",scheme="http"} 3
+ *
  * For OpenMetrics the tags are converted to a { list } and appended to the base
  * metrics name before using with actual metrics objects, the same set of tags
  * on different transactions resolve to the same qualification string.
- *
- * http_srv{code="404",mount="/",method="GET",scheme="http"} 3
  */
 
 typedef struct lws_metrics_tag {
@@ -93,8 +94,12 @@ lws_metrics_tag_wsi_add(struct lws *wsi, const char *name, const char *val);
  * ss-specific version that also appends the tag value to the lifecycle tag
  * used for logging the ss identity
  */
+#if defined(LWS_WITH_SYS_METRICS)
 LWS_EXTERN LWS_VISIBLE int
 lws_metrics_tag_ss_add(struct lws_ss_handle *ss, const char *name, const char *val);
+#else
+#define lws_metrics_tag_ss_add(_a, _b, _c)
+#endif
 #endif
 
 LWS_EXTERN LWS_VISIBLE void
@@ -194,7 +199,8 @@ typedef struct lws_metric_pub {
 } lws_metric_pub_t;
 
 LWS_EXTERN LWS_VISIBLE void
-lws_metrics_hist_bump_priv_tagged(lws_metric_pub_t *mt, lws_dll2_owner_t *tow);
+lws_metrics_hist_bump_priv_tagged(lws_metric_pub_t *mt, lws_dll2_owner_t *tow,
+				  lws_dll2_owner_t *tow2);
 
 
 /*
@@ -206,12 +212,12 @@ lws_metrics_hist_bump_priv_tagged(lws_metric_pub_t *mt, lws_dll2_owner_t *tow);
  * cleanly if WITH_SYS_METRICS is disabled for the build.
  */
 
-typedef struct lws_metric lws_metric_t;
+struct lws_metric;
 
 typedef struct lws_metric_caliper {
 	struct lws_dll2_owner	mtags_owner; /**< collect tags here during
 					      * caliper lifetime */
-	lws_metric_t		*mt; /**< NULL == inactive */
+	struct lws_metric	*mt; /**< NULL == inactive */
 	lws_usec_t		us_start;
 } lws_metric_caliper_t;
 
@@ -221,7 +227,7 @@ typedef struct lws_metric_caliper {
 #define lws_metrics_caliper_bind(_name, _mt) \
 	{ if (_name.mt) { \
 		lwsl_err("caliper: overwrite %s\n", \
-				priv_to_pub(_name.mt)->name); \
+				lws_metrics_priv_to_pub(_name.mt)->name); \
 		assert(0); } \
 	  _name.mt = _mt; _name.us_start = lws_now_usecs(); }
 #define lws_metrics_caliper_declare(_name, _mt) \
@@ -231,13 +237,17 @@ typedef struct lws_metric_caliper {
 			   (u_mt_t)(lws_now_usecs() - \
 					   _name.us_start)); \
 					  }  lws_metrics_caliper_done(_name);  }
-#define lws_metrics_caliper_report_hist(_name, _histname) \
-		_lws_metrics_caliper_report_hist(&_name, _histname)
-#define lws_metrics_caliper_cancel(_name) { _name.us_start = 0; _name.mt = NULL; }
+#define lws_metrics_caliper_report_hist(_name, pwsi) if (_name.mt) { \
+		lws_metrics_hist_bump_priv_tagged(lws_metrics_priv_to_pub(_name.mt), \
+						  &_name.mtags_owner, \
+						  pwsi ? &((pwsi)->cal_conn.mtags_owner) : NULL); \
+		lws_metrics_caliper_done(_name);  }
+
+#define lws_metrics_caliper_cancel(_name) { lws_metrics_caliper_done(_name); }
 #define lws_metrics_hist_bump(_mt, _name) \
 		lws_metrics_hist_bump_(_mt, _name)
 #define lws_metrics_hist_bump_priv(_mt, _name) \
-		lws_metrics_hist_bump_(priv_to_pub(_mt), _name)
+		lws_metrics_hist_bump_(lws_metrics_priv_to_pub(_mt), _name)
 #define lws_metrics_caliper_done(_name) { \
 		_name.us_start = 0; _name.mt = NULL; \
 		lws_metrics_tags_destroy(&_name.mtags_owner); }
@@ -246,7 +256,7 @@ typedef struct lws_metric_caliper {
 #define lws_metrics_caliper_bind(_name, _mt)
 #define lws_metrics_caliper_declare(_name, _mp)
 #define lws_metrics_caliper_report(_name, _go_nogo)
-#define lws_metrics_caliper_report_hist(_name, _histname)
+#define lws_metrics_caliper_report_hist(_name, pwsiconn)
 #define lws_metrics_caliper_cancel(_name)
 #define lws_metrics_hist_bump(_mt, _name)
 #define lws_metrics_hist_bump_priv(_mt, _name)
@@ -269,7 +279,8 @@ typedef struct lws_metric_caliper {
  * as a histogram if LWSMTFL_REPORT_HIST etc
  */
 LWS_EXTERN LWS_VISIBLE int
-lws_metrics_format(lws_metric_pub_t *pub, char *buf, size_t len);
+lws_metrics_format(lws_metric_pub_t *pub, lws_metric_bucket_t **sub,
+		   char *buf, size_t len);
 
 /**
  * lws_metrics_hist_bump() - add or increment histogram bucket
@@ -293,6 +304,10 @@ lws_metrics_hist_bump_(lws_metric_pub_t *pub, const char *name);
 LWS_VISIBLE LWS_EXTERN int
 lws_metrics_foreach(struct lws_context *ctx, void *user,
 		    int (*cb)(lws_metric_pub_t *pub, void *user));
+
+LWS_VISIBLE LWS_EXTERN int
+lws_metrics_hist_bump_describe_wsi(struct lws *wsi, lws_metric_pub_t *pub,
+				   const char *name);
 
 enum {
 	LMT_NORMAL = 0,	/* related to successful events */

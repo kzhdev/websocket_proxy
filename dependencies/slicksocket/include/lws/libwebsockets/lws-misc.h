@@ -1,7 +1,7 @@
 /*
  * libwebsockets - small server side websockets and web server implementation
  *
- * Copyright (C) 2010 - 2019 Andy Green <andy@warmcat.com>
+ * Copyright (C) 2010 - 2021 Andy Green <andy@warmcat.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -309,6 +309,19 @@ lws_json_simple_strcmp(const char *buf, size_t len, const char *name, const char
 LWS_VISIBLE LWS_EXTERN int
 lws_hex_to_byte_array(const char *h, uint8_t *dest, int max);
 
+/**
+ * lws_hex_from_byte_array(): render byte array as hex char string
+ *
+ * \param src: incoming binary source array
+ * \param slen: length of src in bytes
+ * \param dest: array to fill with hex chars representing src
+ * \param len: max extent of dest
+ *
+ * This converts binary data of length slen at src, into a hex string at dest
+ * of maximum length len.  Even if truncated, the result will be NUL-terminated.
+ */
+LWS_VISIBLE LWS_EXTERN void
+lws_hex_from_byte_array(const uint8_t *src, size_t slen, char *dest, size_t len);
 
 /**
  * lws_hex_random(): generate len - 1 or - 2 characters of random ascii hex
@@ -318,10 +331,7 @@ lws_hex_to_byte_array(const char *h, uint8_t *dest, int max);
  * \param len: the number of bytes the buffer dest points to can hold
  *
  * This creates random ascii-hex strings up to a given length, with a
- * terminating NUL.  Hex characters are produced in pairs, if the length of
- * the destination buffer is even, after accounting for the NUL there will be
- * an unused byte at the end after the NUL.  So lengths should be odd to get
- * length - 1 characters exactly followed by the NUL.
+ * terminating NUL.
  *
  * There will not be any characters produced that are not 0-9, a-f, so it's
  * safe to go straight into, eg, JSON.
@@ -806,6 +816,25 @@ lws_is_ssl(struct lws *wsi);
  */
 LWS_VISIBLE LWS_EXTERN int
 lws_is_cgi(struct lws *wsi);
+
+/**
+ * lws_tls_jit_trust_blob_queury_skid() - walk jit trust blob for skid
+ *
+ * \param _blob: the start of the blob in memory
+ * \param blen: the length of the blob in memory
+ * \param skid: the SKID we are looking for
+ * \param skid_len: the length of the SKID we are looking for
+ * \param prpder: result pointer to receive a pointer to the matching DER
+ * \param prder_len: result pointer to receive matching DER length
+ *
+ * Helper to scan a JIT Trust blob in memory for a trusted CA cert matching
+ * a given SKID.  Returns 0 if found and *prpder and *prder_len are set, else
+ * nonzero.
+ */
+LWS_VISIBLE LWS_EXTERN int
+lws_tls_jit_trust_blob_queury_skid(const void *_blob, size_t blen,
+				   const uint8_t *skid, size_t skid_len,
+				   const uint8_t **prpder, size_t *prder_len);
 
 /**
  * lws_open() - platform-specific wrapper for open that prepares the fd
