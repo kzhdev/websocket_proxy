@@ -5,7 +5,7 @@
 #include <iostream>
 #include <cstdio>
 #include <ctime>
-
+#include <string>
 #include "websocket.h"
 
 #define SHM_OWNER TEXT("ZorroWebsocketProxy_shm_owner")
@@ -62,7 +62,9 @@ namespace {
         wchar_t result[MAX_PATH] = { 0 };
         GetModuleFileNameW(NULL, result, MAX_PATH);
         std::wstring wsPath(result);
-        std::string path(wsPath.begin(), wsPath.end());
+        int count = WideCharToMultiByte(CP_ACP, 0, wsPath.c_str(), wsPath.length(), NULL, 0, NULL, NULL);
+        std::string path(count, 0);
+        WideCharToMultiByte(CP_ACP, 0, wsPath.c_str(), -1, &path[0], count, NULL, NULL);
         auto pos = path.rfind("\\");
 #else
         char result[PATH_MAX];

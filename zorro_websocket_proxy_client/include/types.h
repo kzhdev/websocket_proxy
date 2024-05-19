@@ -12,6 +12,9 @@ namespace websocket {
 #define HEARTBEAT_INTERVAL 500  // 500ms
 #define HEARTBEAT_TIMEOUT 15000 // 15s
 
+#pragma warning( push )
+#pragma warning( disable : 4200 )
+
 #pragma pack(1)
     struct Message {
         enum Type : uint8_t {
@@ -86,6 +89,8 @@ namespace websocket {
         char data[0];
     };
 #pragma pack()
+
+#pragma warning( pop )
 
     typedef slick::SlickQueue<uint8_t> SHM_QUEUE_T;
 
