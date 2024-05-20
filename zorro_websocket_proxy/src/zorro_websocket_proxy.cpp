@@ -139,14 +139,14 @@ ZorroWebsocketProxy::~ZorroWebsocketProxy() {
         CloseHandle(hMapFile_);
         hMapFile_ = nullptr;
     }
-    lwsl_user("WebosocketsProsy destroyed\n");
+    lwsl_user("WebsocketProxy destroyed\n");
 }
 
 void ZorroWebsocketProxy::run() {
     if (!own_shm_) {
         auto owner = owner_pid_->load(std::memory_order_relaxed);
         if (owner) {
-            lwsl_user("Shm created by other ZorrorWebsocketsProxy instance. PID=%d\n", owner);
+            lwsl_user("Shm created by other ZorroWebsocketProxy instance. PID=%d\n", owner);
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
             if (isProcessRunning(owner)) {
                 lwsl_user("Only one ZorroWebsocketProxy instance is allowed. Shutdown. PID=%d\n", pid_);
