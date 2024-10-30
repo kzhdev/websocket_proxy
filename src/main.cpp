@@ -12,6 +12,7 @@
 #include "spdlog/sinks/stdout_color_sinks.h"
 #endif
 #include "websocket_proxy.h"
+#include <websocket_proxy/version.h>
 
 #ifdef _WIN32
 #pragma comment(lib, "Ws2_32.lib")
@@ -92,7 +93,7 @@ int main(int argc, char* argv[])
 
     spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%F][%t][%l][%s:%#] %v");
 
-    SPDLOG_INFO("Start WebsocketProxy...");
+    SPDLOG_INFO(std::format("Start WebsocketProxy {}.{}.{}.{} ...", WebsocketProxy_VERSION_MAJOR, WebsocketProxy_VERSION_MINOR, WebsocketProxy_VERSION_PATCH, WebsocketProxy_VERSION_TWEAK));
     WebsocketProxy proxy(server_queue_size);
     proxy.run();
     SPDLOG_INFO("WebsocketProxy Exit.");

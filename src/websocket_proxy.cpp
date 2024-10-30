@@ -129,7 +129,7 @@ void WebsocketProxy::run() {
     boost::asio::signal_set signals(ioc_, SIGINT, SIGTERM);
     signals.async_wait([&](auto, auto){ stop(); });
 
-    SPDLOG_INFO("\n\nWebsocketProxy started. PID={}\n\n", pid_);
+    SPDLOG_INFO("\n\nWebsocketProxy started. PID={}\n", pid_);
 
     // start heartbeat
     ioc_.post([this]() { startHeartbeat(); });
@@ -155,24 +155,6 @@ void WebsocketProxy::run() {
             SPDLOG_ERROR(std::format("{}", e.what()));
         }
     }
-
-    // while (run_.load(std::memory_order_relaxed)) {
-    //     auto req = client_queue_.read(client_index_);
-    //     if (req.first) {
-    //         handleClientMessage(reinterpret_cast<Message&>(*req.first));
-    //     }
-
-    //     removeClosedSockets();
-        
-    //     if (!checkHeartbeats() && !req.first) {
-    //         std::this_thread::yield();
-    //     }
-
-    //     if (shutdown_time_ && (get_timestamp() - shutdown_time_) >= 60000) {
-    //         run_.store(false, std::memory_order_release);
-    //         break;
-    //     }
-    // }
 
     SPDLOG_INFO("WebsocketProxy Exit. PID={}", pid_);
 }
