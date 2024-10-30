@@ -1,8 +1,16 @@
-# ZorroWebsocketProxy
-ZorroWebsocketProxy is a C++ WebSocket prroxy framework initally created for Zorro-Trader. It can be used for any application to share one WebSockets connection for multiple application instances.
+# WebsocketProxy: Share a Single WebSocket Connection for Multiple Clients (C++)
+WebSocketProxy provides a C++ WebSocket proxy framework that empowers you to share a single WebSocket connection among multiple clients, maximizing resource utilization and streamlining real-time data access.
 
-## Overview
-ZorroWebsocketProxy includes two components: a standalone proxy server excutable and a proxy client static library. The proxy server and client communicate with each other through shared memory ring buffers.
+## Built for Efficiency: Serving Multiple Clients with One Connection
+Designed initially for the [Alpaca.Market](https://alpaca.markets/), which offers data via both REST and WebSockets. However, Alpaca limits the number of concurrent WebSocket connections per account. WebSocketProxy solves this by enabling multiple strategies under the same account to receive real-tine market data updates through a single, shared WebSocket connection.
 
-The proxy server is spawned when the first client trying to open a Websocket. The server makes sure that there is only one server running. If for any reason a second server is launched, it will shut itself down. The proxy server will keeps runing until the last client instances are closed.
+## Components and Communication
+WebSocketProxy consists of two components: 
+1. Standalone proxy server executable: This executable acts as the central communication hub. It manages the connection to the WebSocket server and handles data forwarding between clients. It's launched upon the first client attempting a WebSocket connection, ensuring only one server instance runs simultaneously. Any subsequent server launch attempts automatically terminate, preventing resource conflicts. The server continues execution until all connected clients are closed.
+2. Header-only Proxy Client: This lightweight client library integrates into your individual applications. It manages communication with the proxy server and provides a familiar interface for sending and receiving data.
 
+## Benefits of WebSocketProxy
+* Efficient Resource Utilization: Share a single WebSocket connection, reducing overhead and improving resource management.
+* Real-Time Data Streamlining: Multiple trading strategies within an account gain access to crucial market updates concurrently.
+* Simplified Integration: The header-only client library enables effortless integration with your existing client applications.
+* Shared Memory Optimization: Communication between server and clients leverages shared memory ring buffers, ensuring high-performance data exchange.

@@ -1,3 +1,0 @@
-[submodule "dependencies/slick_queue"]
-	path = dependencies/slick_queue
-	url = https://github.com/SlickTech/slick_queue.git

@@ -32,9 +32,11 @@
 *.app
 
 .vs
-Debug
-Release
-!dependencies/slicksocket/lib/*
-!dependencies/slicksocket/lib/Debug/*
-!dependencies/slicksocket/lib/Release/*
+.vscode
+Debug/
+Release/
 *.vcxproj.user
+log/
+build/
+cmake_build_debug/
+cmake_build_release/
