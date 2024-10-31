@@ -1,26 +1,10 @@
 #pragma once
 
-// #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
-// #define WIN32_LEAN_AND_MEAN
-// #include <Windows.h>
-// #endif
-
-#ifdef _WIN32
-#   ifdef USE_ASIO
-//     Set the proper SDK version before including boost/Asio
-#      include <SDKDDKVer.h>
-//     Note boost/ASIO includes Windows.h. 
-#      include <boost/asio.hpp>
-#   else //  USE_ASIO
-#      define WIN32_LEAN_AND_MEAN
-#      include <Windows.h>
-#   endif //  USE_ASIO
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
 #include <tlhelp32.h>
-#else // _WIN32
-#  ifdef USE_ASIO
-#     include <boost/asio.hpp>
-#  endif // USE_ASIO
-#endif //_WIN32
+#endif
 
 #include <cstdint>
 #include <thread>

@@ -45,7 +45,7 @@ set(SOURCES
 
 add_executable(websocket_proxy ${SOURCES})
 target_include_directories(websocket_proxy PUBLIC include ${slick_queue_SOURCE_DIR}/include ${spdlog_SOURCE_DIR} ${RELEASE_DIR}/include)
-target_link_libraries(websocket_proxy PRIVATE spdlog::spdlog_header_only Boost::asio Boost::beast OpenSSL::SSL OpenSSL::Crypto)
+target_link_libraries(websocket_proxy PRIVATE spdlog::spdlog Boost::asio Boost::beast OpenSSL::SSL OpenSSL::Crypto)
 target_precompile_headers(websocket_proxy PRIVATE src/pch.hpp)
 
 if (MSVC)
@@ -59,3 +59,14 @@ if (MSVC)
     target_compile_options(websocket_proxy PRIVATE "/bigobj")
     set_target_properties(websocket_proxy PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
+
+if (CMAKE_BUILD_TYPE MATCHES Release)
+    add_custom_command(TARGET websocket_proxy
+        POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_BINARY_DIR}/bin/Release ${RELEASE_DIR}/bin
+        COMMAND ${CMAKE_COMMAND} -E tar "cfv" "websocket_proxy_${BUILD_VERSION}.zip" --format=zip "${RELEASE_DIR}/bin" "${RELEASE_DIR}/include"
+        WORKING_DIRECTORY "${RELEASE_DIR}"
+        COMMENT "Creating zip archive"
+    )
+endif()
+
