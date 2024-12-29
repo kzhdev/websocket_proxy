@@ -4,7 +4,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <thread>
-#include <websocket_proxy/types.h>
+#include <alpaca_websocket_proxy/types.h>
 #include <boost/asio/ssl.hpp>
 
 #ifdef SPDLOG_ACTIVE_LEVEL
@@ -15,11 +15,11 @@
 namespace asio = boost::asio;            // from <boost/asio.hpp>
 namespace ssl = asio::ssl;       // from <boost/asio/ssl.hpp>
 
-namespace websocket_proxy {
+namespace alpaca_websocket_proxy {
 
 class Websocket;
 
-class WebsocketProxy final {
+class AlpacaWebsocketProxy final {
     std::atomic_bool run_{ true };
     SHM_QUEUE_T client_queue_;
     SHM_QUEUE_T server_queue_;
@@ -72,8 +72,8 @@ class WebsocketProxy final {
 
 
 public:
-    WebsocketProxy(uint32_t server_queue_size);
-    ~WebsocketProxy();
+    AlpacaWebsocketProxy(uint32_t server_queue_size);
+    ~AlpacaWebsocketProxy();
 
     void run();
     void stop() noexcept { run_.store(false, std::memory_order_release); ioc_.stop(); }

@@ -4,10 +4,10 @@
 #include <atomic>
 #include <chrono>
 
-namespace websocket_proxy {
+namespace alpaca_websocket_proxy {
 
-#define CLIENT_TO_SERVER_QUEUE "WebsocketProxy_client_server"
-#define SERVER_TO_CLIENT_QUEUE "WebsocketProxy_server_client"
+#define CLIENT_TO_SERVER_QUEUE "AlpacaWebsocketProxy_client_server"
+#define SERVER_TO_CLIENT_QUEUE "AlpacaWebsocketProxy_server_client"
 #define HEARTBEAT_INTERVAL 500  // 500ms
 #define HEARTBEAT_TIMEOUT 15000 // 15s
 

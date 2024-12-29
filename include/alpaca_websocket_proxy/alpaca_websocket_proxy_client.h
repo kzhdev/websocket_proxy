@@ -14,18 +14,18 @@
 #include <filesystem>
 #include <format>
 
-#include <websocket_proxy\types.h>
+#include <alpaca_websocket_proxy\types.h>
 
-namespace websocket_proxy {
+namespace alpaca_websocket_proxy {
 
-class WebsocketProxyCallback {
+class AlpacaWebsocketProxyCallback {
 public:
-    virtual ~WebsocketProxyCallback() = default;
+    virtual ~AlpacaWebsocketProxyCallback() = default;
     virtual void onWebsocketProxyServerDisconnected() = 0;
     virtual void onWebsocketOpened(uint64_t id) = 0;
     virtual void onWebsocketClosed(uint64_t id) = 0;
-    virtual void onWebsocketError(uint64_t id, const char* err, size_t len) = 0;
-    virtual void onWebsocketData(uint64_t id, const char* data, size_t len, size_t remaining) = 0;
+    virtual void onWebsocketError(uint64_t id, const char* err, uint32_t len) = 0;
+    virtual void onWebsocketData(uint64_t id, const char* data, uint32_t len, uint32_t remaining) = 0;
 
     // functions to pass log messages to client
     virtual void logError(std::function<std::string()>&&) {}
@@ -34,10 +34,10 @@ public:
     virtual void logDebug(std::function<std::string()>&&) {}
 };
 
-class WebsocketProxyClient {
+class AlpacaWebsocketProxyClient {
 public:
-    WebsocketProxyClient(WebsocketProxyCallback* callback, std::string&& name, std::string &&proxy_exe_path);
-    virtual ~WebsocketProxyClient();
+    AlpacaWebsocketProxyClient(AlpacaWebsocketProxyCallback* callback, std::string&& name, std::string &&proxy_exe_path);
+    virtual ~AlpacaWebsocketProxyClient();
 
     uint64_t serverId() const noexcept { return server_pid_; }
 
@@ -46,11 +46,12 @@ public:
     bool closeWebSocket(uint64_t id = 0);
     bool subscribe(uint64_t id, const std::string& symbol, const char* subscription_request, uint32_t request_len, SubscriptionType type, bool& existing);
     bool unsubscribe(uint64_t id, const std::string& symbol, const char* unsubscription_request, uint32_t request_len);
-    void send(uint64_t id, const char* msg, size_t len);
+    void send(uint64_t id, const char* msg, uint32_t len);
 
 private:
     bool connect();
     bool spawnWebsocketsProxyServer();
+    void waitForServerReady();
     bool _register();
     void unregister(bool destroying = false);
     void sendMessage(Message* msg, uint64_t index, uint32_t size);
@@ -69,7 +70,7 @@ private:
     std::tuple<Message*, uint64_t, uint32_t> reserveMessage();
     
 private:
-    WebsocketProxyCallback* callback_ = nullptr;
+    AlpacaWebsocketProxyCallback* callback_ = nullptr;
     std::unique_ptr<SHM_QUEUE_T> client_queue_;
     std::unique_ptr<SHM_QUEUE_T> server_queue_;
     uint64_t server_queue_index_ = 0;
@@ -94,7 +95,7 @@ inline uint64_t get_timestamp() {
 }
 
 template<typename T>
-inline uint32_t get_message_size(size_t data_len = 0) {
+inline uint32_t get_message_size(uint32_t data_len = 0) {
     return sizeof(Message) + sizeof(T) + data_len * sizeof(char);
 }
 
@@ -127,9 +128,9 @@ inline bool isProcessRunning(uint64_t processID) {
 }
 
 
-////////////////////////////// WebsocketProxyClient Implementation //////////////////////////////
+////////////////////////////// AlpacaWebsocketProxyClient Implementation //////////////////////////////
 
-inline WebsocketProxyClient::WebsocketProxyClient(WebsocketProxyCallback* callback, std::string&& name, std::string&& proxy_exe_path)
+inline AlpacaWebsocketProxyClient::AlpacaWebsocketProxyClient(AlpacaWebsocketProxyCallback* callback, std::string&& name, std::string&& proxy_exe_path)
     : callback_(callback)
     , pid_(GetCurrentProcessId())
     , name_(std::move(name))
@@ -141,13 +142,13 @@ inline WebsocketProxyClient::WebsocketProxyClient(WebsocketProxyCallback* callba
     }
 }
 
-inline WebsocketProxyClient::~WebsocketProxyClient() {
+inline AlpacaWebsocketProxyClient::~AlpacaWebsocketProxyClient() {
     if (server_pid_.load(std::memory_order_relaxed)) {
         unregister(true);
     }
 }
 
-inline bool WebsocketProxyClient::connect() {
+inline bool AlpacaWebsocketProxyClient::connect() {
     if (!worker_thread_) {
         worker_thread_ = std::make_unique<std::thread>([this]() { doWork(); });
     }
@@ -157,16 +158,17 @@ inline bool WebsocketProxyClient::connect() {
         return false;
     }
 
+    waitForServerReady();
     return _register();
 }
 
-inline void WebsocketProxyClient::sendMessage(Message* msg, uint64_t index, uint32_t size) {
+inline void AlpacaWebsocketProxyClient::sendMessage(Message* msg, uint64_t index, uint32_t size) {
     msg->status.store(Message::Status::PENDING, std::memory_order_relaxed);
     client_queue_->publish(index, size);
     last_heartbeat_time_ = get_timestamp();
 }
 
-inline bool WebsocketProxyClient::waitForResponse(Message* msg, uint32_t timeout) {
+inline bool AlpacaWebsocketProxyClient::waitForResponse(Message* msg, uint32_t timeout) {
     auto start = get_timestamp();
     while (msg->status.load(std::memory_order_relaxed) == Message::Status::PENDING) {
         auto now = get_timestamp();
@@ -180,16 +182,17 @@ inline bool WebsocketProxyClient::waitForResponse(Message* msg, uint32_t timeout
     return true;
 }
 
-inline bool WebsocketProxyClient::spawnWebsocketsProxyServer() {
-    if (!isProcessRunning(L"websocket_proxy.exe")) {
+inline bool AlpacaWebsocketProxyClient::spawnWebsocketsProxyServer() {
+    if (!isProcessRunning(L"alpaca_websocket_proxy.exe")) {
         STARTUPINFOW si;
         PROCESS_INFORMATION pi;
         ZeroMemory(&si, sizeof(si));
         si.cb = sizeof(si);
         ZeroMemory(&pi, sizeof(pi));
 
+        callback_->logInfo([]() { return "Spawn alpaca_websocket_proxy"; });
         if (!CreateProcessW(exe_path_.c_str(), NULL, NULL, NULL, FALSE, DETACHED_PROCESS, NULL, NULL, &si, &pi)) {
-            callback_->logError([](){ return std::format("Failed to launch websocket_proxy. err={}", GetLastError()); });
+            callback_->logError([](){ return std::format("Failed to launch alpaca_websocket_proxy. err={}", GetLastError()); });
             return false;
         }
         CloseHandle(pi.hProcess);
@@ -197,9 +200,10 @@ inline bool WebsocketProxyClient::spawnWebsocketsProxyServer() {
 
         // wait for proxy to start up
         auto start = get_timestamp();
-        while (!isProcessRunning(L"websocket_proxy.exe") && (get_timestamp() - start) < 10000) {
+        while (!isProcessRunning(L"alpaca_websocket_proxy.exe") && (get_timestamp() - start) < 10000) {
             std::this_thread::yield();
         }
+        callback_->logInfo([]() { return "alpaca_websocket_proxy started"; });
     }
 
     uint32_t retry = 5;
@@ -215,7 +219,7 @@ inline bool WebsocketProxyClient::spawnWebsocketsProxyServer() {
     }
 
     if (!server_queue_) {
-        callback_->logError([]() { return "Failed to launch websocket_proxy. server_queue_ not ready"; });
+        callback_->logError([]() { return "Failed to launch alpaca_websocket_proxy. server_queue_ not ready"; });
         return false;
     }
 
@@ -223,7 +227,7 @@ inline bool WebsocketProxyClient::spawnWebsocketsProxyServer() {
         client_queue_ = std::make_unique<SHM_QUEUE_T>(CLIENT_TO_SERVER_QUEUE);
     }
     catch (const std::runtime_error&) {
-        callback_->logError([]() { return "Failed to launch websocket_proxy. client_req_queue not ready"; });
+        callback_->logError([]() { return "Failed to launch alpaca_websocket_proxy. client_req_queue not ready"; });
         return false;
     }
 
@@ -231,14 +235,25 @@ inline bool WebsocketProxyClient::spawnWebsocketsProxyServer() {
     return true;
 }
 
-inline bool WebsocketProxyClient::_register() {
+inline void AlpacaWebsocketProxyClient::waitForServerReady()
+{
+    auto start = get_timestamp();
+    while ((get_timestamp() - start) < 10000) {
+        auto result = server_queue_->read(server_queue_index_);
+        if (result.first) {
+            break;
+        }
+    }
+}
+
+inline bool AlpacaWebsocketProxyClient::_register() {
     auto [msg, index, size] = reserveMessage<RegisterMessage>();
     msg->type = Message::Type::Regster;
     auto reg = reinterpret_cast<RegisterMessage*>(msg->data);
     strcpy_s(reg->name, 32, name_.c_str());
     sendMessage(msg, index, size);
     if (!waitForResponse(msg, 20000)) {
-        callback_->logError([]() { return "Unable to connect to websocket_proxy. timeout"; });
+        callback_->logError([]() { return "Unable to connect to alpaca_websocket_proxy. timeout"; });
         return false;
     }
 
@@ -252,7 +267,7 @@ inline bool WebsocketProxyClient::_register() {
     return true;
 }
 
-inline void WebsocketProxyClient::unregister(bool destroying) {
+inline void AlpacaWebsocketProxyClient::unregister(bool destroying) {
     auto [msg, index, size] = reserveMessage();
     msg->type = Message::Type::Unregister;
     sendMessage(msg, index, size);
@@ -272,7 +287,7 @@ inline void WebsocketProxyClient::unregister(bool destroying) {
     }
 }
 
-inline std::pair<uint64_t, bool> WebsocketProxyClient::openWebSocket(const std::string& url, const std::string &api_key) {
+inline std::pair<uint64_t, bool> AlpacaWebsocketProxyClient::openWebSocket(const std::string& url, const std::string &api_key) {
     auto msg = sendOpenMessage(url, api_key);
     if (!msg) {
         return std::make_pair(0, false);
@@ -294,11 +309,11 @@ inline std::pair<uint64_t, bool> WebsocketProxyClient::openWebSocket(const std::
     return std::make_pair(req->id, req->new_connection);
 }
 
-inline bool WebsocketProxyClient::openWebSocketAsync(const std::string& url, const std::string &api_key) {
+inline bool AlpacaWebsocketProxyClient::openWebSocketAsync(const std::string& url, const std::string &api_key) {
     return sendOpenMessage(url, api_key);
 }
 
-inline Message* WebsocketProxyClient::sendOpenMessage(const std::string& url, const std::string &api_key) {
+inline Message* AlpacaWebsocketProxyClient::sendOpenMessage(const std::string& url, const std::string &api_key) {
     if (url.size() > 255) {
         callback_->logError([]() { return "URL is to long. limit is 255 character"; });
         return nullptr;
@@ -320,7 +335,7 @@ inline Message* WebsocketProxyClient::sendOpenMessage(const std::string& url, co
     return msg;
 }
 
-inline bool WebsocketProxyClient::closeWebSocket(uint64_t id) {
+inline bool AlpacaWebsocketProxyClient::closeWebSocket(uint64_t id) {
     auto [msg, index, size] = reserveMessage<WsClose>();
     msg->type = Message::Type::CloseWs;
     auto req = reinterpret_cast<WsClose*>(msg->data);
@@ -335,7 +350,7 @@ inline bool WebsocketProxyClient::closeWebSocket(uint64_t id) {
     return true;
 }
 
-inline bool WebsocketProxyClient::subscribe(uint64_t id, const std::string& symbol, const char* subscription_request, uint32_t request_len, SubscriptionType type, bool& existing) {
+inline bool AlpacaWebsocketProxyClient::subscribe(uint64_t id, const std::string& symbol, const char* subscription_request, uint32_t request_len, SubscriptionType type, bool& existing) {
     auto [msg, index, size] = reserveMessage<WsSubscription>(request_len);
     msg->type = Message::Type::Subscribe;
     auto req = reinterpret_cast<WsSubscription*>(msg->data);
@@ -352,7 +367,7 @@ inline bool WebsocketProxyClient::subscribe(uint64_t id, const std::string& symb
     return true;
 }
 
-inline bool WebsocketProxyClient::unsubscribe(uint64_t id, const std::string& symbol, const char* unsubscription_request, uint32_t request_len) {
+inline bool AlpacaWebsocketProxyClient::unsubscribe(uint64_t id, const std::string& symbol, const char* unsubscription_request, uint32_t request_len) {
     auto [msg, index, size] = reserveMessage<WsSubscription>(request_len);
     msg->type = Message::Type::Unsubscribe;
     auto req = reinterpret_cast<WsSubscription*>(msg->data);
@@ -365,7 +380,7 @@ inline bool WebsocketProxyClient::unsubscribe(uint64_t id, const std::string& sy
     return true;
 }
 
-inline void WebsocketProxyClient::send(uint64_t id, const char* data, size_t len) {
+inline void AlpacaWebsocketProxyClient::send(uint64_t id, const char* data, uint32_t len) {
     auto [msg, index, size] = reserveMessage<WsRequest>(len);
     msg->type = Message::Type::WsRequest;
     auto req = reinterpret_cast<WsRequest*>(msg->data);
@@ -375,7 +390,7 @@ inline void WebsocketProxyClient::send(uint64_t id, const char* data, size_t len
     sendMessage(msg, index, size);
 }
 
-inline void WebsocketProxyClient::doWork() {
+inline void AlpacaWebsocketProxyClient::doWork() {
     run_ = std::make_shared<std::atomic_bool>(true);
     std::shared_ptr<std::atomic_bool> run = run_;
     while (run->load(std::memory_order_relaxed)) {
@@ -429,10 +444,10 @@ inline void WebsocketProxyClient::doWork() {
             }
         }
     }
-    callback_->logDebug([]() { return "WebsocketProxyClient work thread exit"; });
+    callback_->logDebug([]() { return "AlpacaWebsocketProxyClient work thread exit"; });
 }
 
-inline bool WebsocketProxyClient::sendHeartbeat(uint64_t now) {
+inline bool AlpacaWebsocketProxyClient::sendHeartbeat(uint64_t now) {
     if (server_pid_.load(std::memory_order_relaxed) && (now - last_heartbeat_time_) > HEARTBEAT_INTERVAL) {
         auto [msg, index, size] = reserveMessage();
         msg->type = Message::Type::Heartbeat;
@@ -442,7 +457,7 @@ inline bool WebsocketProxyClient::sendHeartbeat(uint64_t now) {
     return false;
 }
 
-inline void WebsocketProxyClient::handleWsOpen(Message* msg) {
+inline void AlpacaWebsocketProxyClient::handleWsOpen(Message* msg) {
     auto open = reinterpret_cast<WsOpen*>(msg->data);
     callback_->logDebug([open]() { return std::format("handleWsOPen, initiator={}", open->client_pid); });
     if (open->client_pid == pid_) {
@@ -451,7 +466,7 @@ inline void WebsocketProxyClient::handleWsOpen(Message* msg) {
     }
 }
 
-inline void WebsocketProxyClient::handleWsClose(Message* msg) {
+inline void AlpacaWebsocketProxyClient::handleWsClose(Message* msg) {
     auto close = reinterpret_cast<WsClose*>(msg->data);
     auto it = websockets_.find(close->id);
     if (it != websockets_.end()) {
@@ -463,7 +478,7 @@ inline void WebsocketProxyClient::handleWsClose(Message* msg) {
     }
 }
 
-inline void WebsocketProxyClient::handleWsError(Message* msg) {
+inline void AlpacaWebsocketProxyClient::handleWsError(Message* msg) {
     auto err = reinterpret_cast<WsError*>(msg->data);
     auto it = websockets_.find(err->id);
     if (it != websockets_.end()) {
@@ -478,7 +493,7 @@ inline void WebsocketProxyClient::handleWsError(Message* msg) {
     }
 }
 
-inline void WebsocketProxyClient::handleWsData(Message* msg) {
+inline void AlpacaWebsocketProxyClient::handleWsData(Message* msg) {
     auto data = reinterpret_cast<WsData*>(msg->data);
     auto it = websockets_.find(data->id);
     if (it != websockets_.end()) {
@@ -491,7 +506,7 @@ inline void WebsocketProxyClient::handleWsData(Message* msg) {
 }
 
 template<typename T>
-inline std::tuple<Message*, uint64_t, uint32_t> WebsocketProxyClient::reserveMessage(uint32_t data_size) {
+inline std::tuple<Message*, uint64_t, uint32_t> AlpacaWebsocketProxyClient::reserveMessage(uint32_t data_size) {
     auto size = get_message_size<T>(data_size);
     auto index = client_queue_->reserve(size);
     auto msg = reinterpret_cast<Message*>((*(client_queue_.get()))[index]);
@@ -500,7 +515,7 @@ inline std::tuple<Message*, uint64_t, uint32_t> WebsocketProxyClient::reserveMes
     return std::make_tuple(msg, index, size);
 }
 
-inline std::tuple<Message*, uint64_t, uint32_t> WebsocketProxyClient::reserveMessage() {
+inline std::tuple<Message*, uint64_t, uint32_t> AlpacaWebsocketProxyClient::reserveMessage() {
     uint32_t size = sizeof(Message);
     auto index = client_queue_->reserve(size);
     auto msg = reinterpret_cast<Message*>((*(client_queue_.get()))[index]);

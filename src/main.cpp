@@ -5,20 +5,25 @@
 #include <signal.h>
 #include <algorithm>
 #include <cctype>
-#include "spdlog/spdlog.h"
-#include "spdlog/async.h"
-#include "spdlog/sinks/basic_file_sink.h"
+#include <spdlog/spdlog.h>
+#include <spdlog/async.h>
+#include <spdlog/sinks/basic_file_sink.h>
 #ifdef DEBUG
-#include "spdlog/sinks/stdout_color_sinks.h"
+#include <spdlog/sinks/stdout_color_sinks.h>
 #endif
-#include "websocket_proxy.h"
-#include <websocket_proxy/version.h>
+#include "alpaca_websocket_proxy.h"
+#include <alpaca_websocket_proxy/version.h>
 
 #ifdef _WIN32
 #pragma comment(lib, "Ws2_32.lib")
 #endif
 
-using namespace websocket_proxy;
+using namespace alpaca_websocket_proxy;
+
+void atexit_hanlder()
+{
+    spdlog::shutdown();
+}
 
 /**
 * Usage:
@@ -31,16 +36,17 @@ using namespace websocket_proxy;
 */
 int main(int argc, char* argv[])
 {
+    std::atexit(atexit_hanlder);
     spdlog::init_thread_pool(8192, 1);
 #ifdef DEBUG
     auto stdout_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-    auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("./log/WebsocketProxy.log");
+    auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("./log/AlpacaWebsocketProxy.log");
     std::vector<spdlog::sink_ptr> sinks {stdout_sink, file_sink};
     auto logger = std::make_shared<spdlog::async_logger>("websocket_proxy_logger", sinks.begin(), sinks.end(), spdlog::thread_pool(), spdlog::async_overflow_policy::overrun_oldest);
     spdlog::set_default_logger(logger);
     spdlog::flush_on(spdlog::level::trace);
 #else
-    auto async_file_logger = spdlog::basic_logger_mt<spdlog::async_factory>("async_file_logger", "./log/WebsocketProxy.log");
+    auto async_file_logger = spdlog::basic_logger_mt<spdlog::async_factory>("async_file_logger", "./log/AlpacaWebsocketProxy.log");
     spdlog::set_default_logger(async_file_logger);
     spdlog::flush_on(spdlog::level::info);
 #endif
@@ -93,9 +99,8 @@ int main(int argc, char* argv[])
 
     spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%F][%t][%l][%s:%#] %v");
 
-    SPDLOG_INFO(std::format("Start WebsocketProxy {}.{}.{}.{} ...", WebsocketProxy_VERSION_MAJOR, WebsocketProxy_VERSION_MINOR, WebsocketProxy_VERSION_PATCH, WebsocketProxy_VERSION_TWEAK));
-    WebsocketProxy proxy(server_queue_size);
+    SPDLOG_INFO(std::format("Start AlpacaWebsocketProxy {}.{}.{}.{} ...", AlpacaWebsocketProxy_VERSION_MAJOR, AlpacaWebsocketProxy_VERSION_MINOR, AlpacaWebsocketProxy_VERSION_PATCH, AlpacaWebsocketProxy_VERSION_TWEAK));
+    AlpacaWebsocketProxy proxy(server_queue_size);
     proxy.run();
-    SPDLOG_INFO("WebsocketProxy Exit.");
-    spdlog::shutdown();
+    SPDLOG_INFO("AlpacaWebsocketProxy Exit.");
 }

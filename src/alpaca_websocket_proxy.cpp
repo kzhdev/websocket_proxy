@@ -1,5 +1,5 @@
 #include <boost/asio.hpp>
-#include "websocket_proxy.h"
+#include "alpaca_websocket_proxy.h"
 #include <thread>
 #include <fstream>
 #include <iostream>
@@ -9,13 +9,13 @@
 #include <format>
 #include <spdlog/spdlog.h>
 #include "websocket.h"
-#include <websocket_proxy/websocket_proxy_client.h>
+#include <alpaca_websocket_proxy/alpaca_websocket_proxy_client.h>
 #include <boost/asio/signal_set.hpp>
 #include <boost/asio/spawn.hpp>
 
-#define SHM_OWNER TEXT("WebsocketProxy_shm_owner")
+#define SHM_OWNER TEXT("AlpacaWebsocketProxy_shm_owner")
 
-using namespace websocket_proxy;
+using namespace alpaca_websocket_proxy;
 
 namespace {
     uint32_t websocket_id_ = 0;
@@ -42,7 +42,7 @@ namespace {
     }
 }
 
-WebsocketProxy::WebsocketProxy(uint32_t server_queue_size)
+AlpacaWebsocketProxy::AlpacaWebsocketProxy(uint32_t server_queue_size)
     : client_queue_(1 << 16, CLIENT_TO_SERVER_QUEUE)
     , server_queue_(server_queue_size, SERVER_TO_CLIENT_QUEUE)
     , client_index_(client_queue_.initial_reading_index())
@@ -80,7 +80,7 @@ WebsocketProxy::WebsocketProxy(uint32_t server_queue_size)
     }
 }
 
-WebsocketProxy::~WebsocketProxy() {
+AlpacaWebsocketProxy::~AlpacaWebsocketProxy() {
     run_.store(false, std::memory_order_release);
     // if (ws_thread_.joinable()) {
     //     ws_thread_.join();
@@ -104,14 +104,14 @@ WebsocketProxy::~WebsocketProxy() {
     }
 }
 
-void WebsocketProxy::run() {
+void AlpacaWebsocketProxy::run() {
     if (!own_shm_) {
         auto owner = owner_pid_->load(std::memory_order_relaxed);
         if (owner) {
-            SPDLOG_INFO("Shm created by other WebsocketProxy instance. PID={}", owner);
+            SPDLOG_INFO("Shm created by other AlpacaWebsocketProxy instance. PID={}", owner);
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
             if (isProcessRunning(owner)) {
-                SPDLOG_INFO("Only one WebsocketProxy instance is allowed. Shutdown. PID={}", pid_);
+                SPDLOG_INFO("Only one AlpacaWebsocketProxy instance is allowed. Shutdown. PID={}", pid_);
                 exit(-1);
             }
         }
@@ -123,7 +123,7 @@ void WebsocketProxy::run() {
             }
         }
 
-        SPDLOG_INFO("The other WebsocketProxy instance is dead, taking over ownership");
+        SPDLOG_INFO("The other AlpacaWebsocketProxy instance is dead, taking over ownership");
     }
 
     boost::asio::signal_set signals(ioc_, SIGINT, SIGTERM);
@@ -132,7 +132,14 @@ void WebsocketProxy::run() {
     SPDLOG_INFO("\n\nWebsocketProxy started. PID={}\n", pid_);
 
     // start heartbeat
-    ioc_.post([this]() { startHeartbeat(); });
+    ioc_.post([this]() {
+        // send a heartbeat to notify client
+        // server is up running
+        auto now = get_timestamp();
+        sendHeartbeat(now);
+        
+        startHeartbeat(); 
+    });
     
     // start process incoming client messages
     ioc_.post([this]() { processClientMessage(); });
@@ -156,17 +163,17 @@ void WebsocketProxy::run() {
         }
     }
 
-    SPDLOG_INFO("WebsocketProxy Exit. PID={}", pid_);
+    SPDLOG_INFO("AlpacaWebsocketProxy Exit. PID={}", pid_);
 }
 
-void WebsocketProxy::startHeartbeat() {
+void AlpacaWebsocketProxy::startHeartbeat() {
     checkHeartbeats();
     if (run_.load(std::memory_order_relaxed)) {
         ioc_.post([this]() { startHeartbeat(); });
     }
 }
 
-void WebsocketProxy::processClientMessage() {
+void AlpacaWebsocketProxy::processClientMessage() {
     auto req = client_queue_.read(client_index_);
     if (req.first) {
         handleClientMessage(reinterpret_cast<Message&>(*req.first));
@@ -186,7 +193,7 @@ void WebsocketProxy::processClientMessage() {
     }
 }
 
-void WebsocketProxy::handleClientMessage(Message& msg) {
+void AlpacaWebsocketProxy::handleClientMessage(Message& msg) {
     switch (msg.type) {
     case Message::Type::Regster:
         handleClientRegistration(msg);
@@ -221,7 +228,7 @@ void WebsocketProxy::handleClientMessage(Message& msg) {
     }
 }
 
-WebsocketProxy::ClientInfo* WebsocketProxy::getClient(uint64_t pid) {
+AlpacaWebsocketProxy::ClientInfo* AlpacaWebsocketProxy::getClient(uint64_t pid) {
     auto it = clients_.find(pid);
     if (it != clients_.end()) {
         it->second.last_heartbeat_time = get_timestamp();
@@ -230,7 +237,7 @@ WebsocketProxy::ClientInfo* WebsocketProxy::getClient(uint64_t pid) {
     return nullptr;
 }
 
-void WebsocketProxy::handleClientRegistration(Message& msg) {
+void AlpacaWebsocketProxy::handleClientRegistration(Message& msg) {
     auto reg = reinterpret_cast<RegisterMessage*>(msg.data);
     SPDLOG_INFO("Register client {} connected, name: {}", msg.pid, reg->name);
     reg->server_pid = pid_;
@@ -244,7 +251,7 @@ void WebsocketProxy::handleClientRegistration(Message& msg) {
     msg.status.store(Message::Status::SUCCESS, std::memory_order_release);
 }
 
-void WebsocketProxy::unregisterClient(uint64_t pid) {
+void AlpacaWebsocketProxy::unregisterClient(uint64_t pid) {
     auto it = clients_.find(pid);
     if (it != clients_.end()) {
         SPDLOG_INFO("Unregister client {}", pid);
@@ -272,11 +279,11 @@ void WebsocketProxy::unregisterClient(uint64_t pid) {
     }
 }
 
-void WebsocketProxy::handleClientHeartbeat(Message& msg) {
+void AlpacaWebsocketProxy::handleClientHeartbeat(Message& msg) {
     getClient(msg.pid);
 }
 
-void WebsocketProxy::openWs(Message& msg) {
+void AlpacaWebsocketProxy::openWs(Message& msg) {
     auto req = reinterpret_cast<WsOpen*>(msg.data);
     auto client = getClient(msg.pid);
     if (client) {
@@ -305,7 +312,7 @@ void WebsocketProxy::openWs(Message& msg) {
     }
 }
 
-void WebsocketProxy::openNewWs(Message& msg, WsOpen* req) {
+void AlpacaWebsocketProxy::openNewWs(Message& msg, WsOpen* req) {
     SPDLOG_INFO("Opening ws {}, clinet={}", req->url, msg.pid);
     req->new_connection = true;
     auto websocket = std::make_shared<Websocket>(this, ioc_, ctx_, pid_ * 10000 + (++websocket_id_), req->url, req->api_key);
@@ -340,7 +347,7 @@ void WebsocketProxy::openNewWs(Message& msg, WsOpen* req) {
         });
 }
 
-void WebsocketProxy::closeWs(Message& msg) {
+void AlpacaWebsocketProxy::closeWs(Message& msg) {
     auto req = reinterpret_cast<WsClose*>(msg.data);
     auto client = getClient(msg.pid);
     if (client) {
@@ -349,7 +356,7 @@ void WebsocketProxy::closeWs(Message& msg) {
     msg.status.store(Message::Status::SUCCESS, std::memory_order_release);
 }
 
-void WebsocketProxy::closeWs(uint64_t id, uint64_t pid) {
+void AlpacaWebsocketProxy::closeWs(uint64_t id, uint64_t pid) {
     SPDLOG_INFO("Close ws. id={}, pid={}", id, pid);
     auto it = websocketsById_.find(id);
     if (it != websocketsById_.end()) {
@@ -360,7 +367,6 @@ void WebsocketProxy::closeWs(uint64_t id, uint64_t pid) {
             SPDLOG_INFO("WS client {} removed from ws id={}", pid, id);
             if (websocket->clients_.empty()) {
                 SPDLOG_INFO("Close ws {}", websocket->url_.c_str());
-                it->second->status_ = Websocket::Status::DISCONNECTING;
                 it->second->close();
                 websocketsByUrlApiKey_.erase(WebsocketKey(websocket->url_, websocket->api_key_));
                 websocketsById_.erase(it);
@@ -371,11 +377,11 @@ void WebsocketProxy::closeWs(uint64_t id, uint64_t pid) {
         SPDLOG_DEBUG("Close ws. socket not found id={}", id);
     }
 }
-void WebsocketProxy::handleSubscribe(Message& msg) {
+void AlpacaWebsocketProxy::handleSubscribe(Message& msg) {
     auto req = reinterpret_cast<WsSubscription*>(msg.data);
     auto client = getClient(msg.pid);
     if (client) {
-        SPDLOG_INFO("Subscribe {} client={} ws_id={}", req->symbol, msg.pid, req->id);
+        SPDLOG_INFO("Subscribe {} client={} ws_id={} type={}", req->symbol, msg.pid, req->id, (int)req->type);
         auto it = websocketsById_.find(req->id);
         if (it != websocketsById_.end()) {
             auto& subscriptions = it->second->subscriptions_;
@@ -392,6 +398,7 @@ void WebsocketProxy::handleSubscribe(Message& msg) {
                 if (!(sub_it->second.type_ & req->type))
                 {
                     it->second->send(req->request, req->request_len);
+                    sub_it->second.type_ |= req->type;
                 }
                 req->existing = true;
                 msg.status.store(Message::Status::SUCCESS, std::memory_order_release);
@@ -408,7 +415,7 @@ void WebsocketProxy::handleSubscribe(Message& msg) {
     msg.status.store(Message::Status::FAILED, std::memory_order_release);
 }
 
-void WebsocketProxy::handleUnsubscribe(Message& msg) {
+void AlpacaWebsocketProxy::handleUnsubscribe(Message& msg) {
     auto req = reinterpret_cast<WsSubscription*>(msg.data);
     auto client = getClient(msg.pid);
     if (client) {
@@ -439,7 +446,7 @@ void WebsocketProxy::handleUnsubscribe(Message& msg) {
     msg.status.store(Message::Status::SUCCESS, std::memory_order_release);
 }
 
-void WebsocketProxy::sendWsRequest(Message& msg) {
+void AlpacaWebsocketProxy::sendWsRequest(Message& msg) {
     auto req = reinterpret_cast<WsRequest*>(msg.data);
     auto client = getClient(msg.pid);
     if (client) {
@@ -461,16 +468,16 @@ void WebsocketProxy::sendWsRequest(Message& msg) {
     msg.status.store(Message::Status::FAILED, std::memory_order_release);
 }
 
-void WebsocketProxy::sendMessageToClient(uint64_t index, uint32_t size) {
+void AlpacaWebsocketProxy::sendMessageToClient(uint64_t index, uint32_t size) {
     sendMessageToClient(index, size, get_timestamp());
 }
 
-void WebsocketProxy::sendMessageToClient(uint64_t index, uint32_t size, uint64_t now) {
+void AlpacaWebsocketProxy::sendMessageToClient(uint64_t index, uint32_t size, uint64_t now) {
     server_queue_.publish(index, size);
     last_heartbeat_time_ = now;
 }
 
-bool WebsocketProxy::checkHeartbeats() {
+bool AlpacaWebsocketProxy::checkHeartbeats() {
     if (clients_.empty()) {
         return false;
     }
@@ -497,11 +504,11 @@ bool WebsocketProxy::checkHeartbeats() {
     return hasActivity;
 }
 
-bool WebsocketProxy::sendHeartbeat() {
+bool AlpacaWebsocketProxy::sendHeartbeat() {
     return sendHeartbeat(get_timestamp());
 }
 
-bool WebsocketProxy::sendHeartbeat(uint64_t now) {
+bool AlpacaWebsocketProxy::sendHeartbeat(uint64_t now) {
     if ((now - last_heartbeat_time_) > HEARTBEAT_INTERVAL) {
         auto [msg, index, size] = reserveMessage();
         msg->type = Message::Type::Heartbeat;
@@ -511,7 +518,7 @@ bool WebsocketProxy::sendHeartbeat(uint64_t now) {
     return false;
 }
 
-void WebsocketProxy::removeClosedSockets() {
+void AlpacaWebsocketProxy::removeClosedSockets() {
     std::pair<uint64_t*, size_t> read;
     while ((read = closed_sockets_.read(closed_sockets_index_)).first) {
         auto it = websocketsById_.find(*read.first);
@@ -525,7 +532,7 @@ void WebsocketProxy::removeClosedSockets() {
 
 
 // Websocket Callbacks
-void WebsocketProxy::onWsOpened(uint64_t id, uint64_t client_pid) {
+void AlpacaWebsocketProxy::onWsOpened(uint64_t id, uint64_t client_pid) {
     auto [msg, index, size] = reserveMessage<WsOpen>();
     msg->type = Message::Type::OpenWs;
     auto open = reinterpret_cast<WsOpen*>(msg->data);
@@ -535,7 +542,7 @@ void WebsocketProxy::onWsOpened(uint64_t id, uint64_t client_pid) {
     sendMessageToClient(index, size);
 }
 
-void WebsocketProxy::onWsClosed(uint64_t id) {
+void AlpacaWebsocketProxy::onWsClosed(uint64_t id) {
     auto [msg, index, size] = reserveMessage<WsClose>();
     msg->type = Message::Type::CloseWs;
     auto wsclose = reinterpret_cast<WsClose*>(msg->data);
@@ -549,7 +556,7 @@ void WebsocketProxy::onWsClosed(uint64_t id) {
     SPDLOG_INFO("Ws {} closed", id);
 }
 
-void WebsocketProxy::onWsError(uint64_t id, const char* err, uint32_t len) {
+void AlpacaWebsocketProxy::onWsError(uint64_t id, const char* err, uint32_t len) {
     auto [msg, index, size] = reserveMessage<WsError>(len);
     msg->type = Message::Type::WsError;
     auto e = reinterpret_cast<WsError*>(msg->data);
@@ -561,7 +568,7 @@ void WebsocketProxy::onWsError(uint64_t id, const char* err, uint32_t len) {
     sendMessageToClient(index, size);
 }
 
-void WebsocketProxy::onWsData(uint64_t id, const char* data, uint32_t len, uint32_t remaining) {
+void AlpacaWebsocketProxy::onWsData(uint64_t id, const char* data, uint32_t len, uint32_t remaining) {
     auto [msg, index, size] = reserveMessage<WsData>(len);
     msg->type = Message::Type::WsData;
     auto d = reinterpret_cast<WsData*>(msg->data);

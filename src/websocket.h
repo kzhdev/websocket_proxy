@@ -1,7 +1,7 @@
 #pragma once
 
 #include "slick_queue.h"
-#include "websocket_proxy.h"
+#include "alpaca_websocket_proxy.h"
 #include <unordered_set>
 #include <boost/beast/core.hpp>
 #include <boost/beast/websocket.hpp>
@@ -24,15 +24,15 @@ using asio::use_awaitable;
 using asio::co_spawn;
 using asio::detached;
 
-namespace websocket_proxy {
+namespace alpaca_websocket_proxy {
 
 class Websocket : public std::enable_shared_from_this<Websocket>
 {
-    friend class WebsocketProxy;
+    friend class AlpacaWebsocketProxy;
 
     asio::io_context& ioc_;
     ssl::context& ctx_;
-    WebsocketProxy* proxy_ = nullptr;
+    AlpacaWebsocketProxy* proxy_ = nullptr;
     tcp::resolver resolver_;
     websocket::stream<ssl::stream<beast::tcp_stream>> ws_;
     beast::flat_buffer r_buffer_;
@@ -67,7 +67,7 @@ class Websocket : public std::enable_shared_from_this<Websocket>
     
 public:
     // Resolver and socket require an io_context
-    explicit Websocket(WebsocketProxy* proxy, asio::io_context& ioc, ssl::context& ctx, uint64_t id, std::string url, std::string api_key)
+    explicit Websocket(AlpacaWebsocketProxy* proxy, asio::io_context& ioc, ssl::context& ctx, uint64_t id, std::string url, std::string api_key)
         : ioc_(ioc)
         , ctx_(ctx)
         , proxy_(proxy)

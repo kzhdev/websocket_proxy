@@ -14,3 +14,5 @@
 #include <boost/asio/spawn.hpp>
 #include <boost/asio/signal_set.hpp>
 #include <spdlog/spdlog.h>
+#include <spdlog/async.h>
+#include <spdlog/sinks/basic_file_sink.h>
