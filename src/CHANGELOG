@@ -1,0 +1,7 @@
+1.0.0.1
+- Fix shutdown deadlock
+- Add example
+- Rename project to websocket_proxy
+
+1.0.0.0
+- Initial release

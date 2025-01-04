@@ -70,7 +70,7 @@ WebsocketProxy relies on several external libraries. You can install these depen
 
 ## Contributing
 
-Contributions are welcome! Please open an issue or submit a pull request on [GitHub](https://github.com/kzhdev/websocket_proxy).
+Contributions are welcome! Please open an issue or submit a pull request on [GitHub](https://github.com/kzhdev/websocket_proxy/issues).
 
 ## License
 
