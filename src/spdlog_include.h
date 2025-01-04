@@ -22,10 +22,5 @@
 
 #pragma once
 
-// The version numbers are passed in from CMakeList
-#define WebsocketProxy_VERSION_MAJOR @websocket_proxy_VERSION_MAJOR@
-#define WebsocketProxy_VERSION_MINOR @websocket_proxy_VERSION_MINOR@
-#define WebsocketProxy_VERSION_PATCH @websocket_proxy_VERSION_PATCH@
-#define WebsocketProxy_VERSION_TWEAK @websocket_proxy_VERSION_TWEAK@
-
-#define VERSION "@websocket_proxy_VERSION_MAJOR@.@websocket_proxy_VERSION_MINOR@.@websocket_proxy_VERSION_PATCH@.@websocket_proxy_VERSION_TWEAK@"
+#define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
+#include <spdlog/spdlog.h>

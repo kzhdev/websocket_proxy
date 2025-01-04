@@ -1,7 +1,29 @@
+// MIT License
+// 
+// Copyright (c) 2024-2025 Kun Zhao
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
 #pragma once
 
 #include "slick_queue.h"
-#include "alpaca_websocket_proxy.h"
+#include "websocket_proxy.h"
 #include <unordered_set>
 #include <boost/beast/core.hpp>
 #include <boost/beast/websocket.hpp>
@@ -10,8 +32,9 @@
 #include <boost/asio/strand.hpp>
 #include <boost/asio/spawn.hpp>
 #include <cstdlib>
-#include <spdlog/spdlog.h>
+#include "spdlog_include.h"
 #include <atomic>
+#include <winrt/Windows.Foundation.h>
 
 namespace beast = boost::beast;         // from <boost/beast.hpp>
 namespace http = beast::http;           // from <boost/beast/http.hpp>
@@ -24,15 +47,15 @@ using asio::use_awaitable;
 using asio::co_spawn;
 using asio::detached;
 
-namespace alpaca_websocket_proxy {
+namespace websocket_proxy {
 
 class Websocket : public std::enable_shared_from_this<Websocket>
 {
-    friend class AlpacaWebsocketProxy;
+    friend class WebsocketProxy;
 
     asio::io_context& ioc_;
     ssl::context& ctx_;
-    AlpacaWebsocketProxy* proxy_ = nullptr;
+    WebsocketProxy* proxy_ = nullptr;
     tcp::resolver resolver_;
     websocket::stream<ssl::stream<beast::tcp_stream>> ws_;
     beast::flat_buffer r_buffer_;
@@ -67,7 +90,7 @@ class Websocket : public std::enable_shared_from_this<Websocket>
     
 public:
     // Resolver and socket require an io_context
-    explicit Websocket(AlpacaWebsocketProxy* proxy, asio::io_context& ioc, ssl::context& ctx, uint64_t id, std::string url, std::string api_key)
+    explicit Websocket(WebsocketProxy* proxy, asio::io_context& ioc, ssl::context& ctx, uint64_t id, std::string url, std::string api_key)
         : ioc_(ioc)
         , ctx_(ctx)
         , proxy_(proxy)
@@ -272,7 +295,7 @@ private:
 
     void on_close(beast::error_code ec)
     {
-        if(ec)
+        if (ec && ec != beast::websocket::error::closed)
         {
             fail(ec, "close");
         }
@@ -287,12 +310,14 @@ private:
     void fail(beast::error_code ec, char const *what, std::function<void(bool)> *callback = nullptr, bool close_connection = true)
     {
         auto err_msg = ec.message();
-        SPDLOG_ERROR("{}: {}", what, err_msg);
+        SPDLOG_ERROR("{}: {} {}", what, ec.value(), err_msg);
         proxy_->onWsError(id_, err_msg.c_str(), err_msg.size());
-        if (callback) {
+        if (callback)
+        {
             (*callback)(false);
         }
-        if (close_connection && status_.load(std::memory_order_relaxed) < Status::DISCONNECTING) {
+        if (close_connection && status_.load(std::memory_order_relaxed) < Status::DISCONNECTING)
+        {
             close();
         }
     }

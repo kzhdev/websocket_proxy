@@ -1,32 +1,47 @@
+// MIT License
+// 
+// Copyright (c) 2024-2025 Kun Zhao
+// 
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
 #pragma once
 
 #include <atomic>
 #include <unordered_map>
 #include <unordered_set>
-#include <thread>
-#include <alpaca_websocket_proxy/types.h>
+#include <websocket_proxy/types.h>
 #include <boost/asio/ssl.hpp>
 
-#ifdef SPDLOG_ACTIVE_LEVEL
-#undef SPDLOG_ACTIVE_LEVEL
-#endif
-#define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
-
-namespace asio = boost::asio;            // from <boost/asio.hpp>
+namespace asio = boost::asio;    // from <boost/asio.hpp>
 namespace ssl = asio::ssl;       // from <boost/asio/ssl.hpp>
 
-namespace alpaca_websocket_proxy {
+namespace websocket_proxy {
 
 class Websocket;
 
-class AlpacaWebsocketProxy final {
+class WebsocketProxy final {
     std::atomic_bool run_{ true };
     SHM_QUEUE_T client_queue_;
     SHM_QUEUE_T server_queue_;
     uint64_t client_index_ = 0;
     uint64_t last_heartbeat_time_ = 0;
     uint64_t shutdown_time_ = 0;
-    // std::thread ws_thread_;
     const uint64_t pid_;
     HANDLE hMapFile_ = nullptr;
     LPVOID lpvMem_ = nullptr;
@@ -72,11 +87,11 @@ class AlpacaWebsocketProxy final {
 
 
 public:
-    AlpacaWebsocketProxy(uint32_t server_queue_size);
-    ~AlpacaWebsocketProxy();
+    WebsocketProxy(uint32_t server_queue_size);
+    ~WebsocketProxy();
 
     void run();
-    void stop() noexcept { run_.store(false, std::memory_order_release); ioc_.stop(); }
+    void shutdown();
 
 private:
     friend class Websocket;
@@ -86,6 +101,7 @@ private:
     void handleClientMessage(Message& msg);
     void handleClientRegistration(Message& msg);
     void unregisterClient(uint64_t pid);
+    void unregisterClient(std::unordered_map<uint64_t, ClientInfo>::iterator &iter);
     void handleClientHeartbeat(Message& msg);
     void openWs(Message& msg);
     void openNewWs(Message& msg, WsOpen* req);
