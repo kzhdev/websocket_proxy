@@ -1,5 +1,4 @@
-// MIT License
-// 
+// The MIT License (MIT) 
 // Copyright (c) 2024-2025 Kun Zhao
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -164,12 +163,18 @@ inline WebsocketProxyClient::WebsocketProxyClient(WebsocketProxyCallback* callba
     }
 }
 
-inline WebsocketProxyClient::~WebsocketProxyClient() {
-    if (server_pid_.load(std::memory_order_relaxed)) {
+inline WebsocketProxyClient::~WebsocketProxyClient()
+{
+    if (server_pid_.load(std::memory_order_relaxed))
+    {
         unregister();
     }
-    run_->store(false, std::memory_order_release);
-    if (worker_thread_ && worker_thread_->joinable()) {
+    if (run_)
+    {
+        run_->store(false, std::memory_order_release);
+    }
+    if (worker_thread_ && worker_thread_->joinable())
+    {
 // #ifdef _WIN32
 //         worker_thread_->detach();
 // #endif // _WIN32

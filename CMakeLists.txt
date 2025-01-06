@@ -42,6 +42,7 @@ set(RELEASE_DIR "${CMAKE_CURRENT_BINARY_DIR}/dist")
 configure_file(src/version.h.in dist/include/websocket_proxy/version.h)
 
 set(SOURCES
+    # src/pch.cpp
     src/main.cpp
     src/websocket_proxy.cpp
 )
@@ -50,6 +51,7 @@ add_executable(websocket_proxy ${SOURCES})
 target_include_directories(websocket_proxy PUBLIC include ${slick_queue_SOURCE_DIR}/include ${RELEASE_DIR}/include)
 target_link_libraries(websocket_proxy PRIVATE spdlog::spdlog_header_only Boost::asio Boost::beast Boost::context OpenSSL::SSL OpenSSL::Crypto)
 target_link_libraries(websocket_proxy PRIVATE ${VCPKG_ROOT})
+# target_precompile_headers(websocket_proxy PRIVATE "src/pch.hpp")
 
 if (MSVC)
     set(CMAKE_CXX_FLAGS_RELEASE "-O2")

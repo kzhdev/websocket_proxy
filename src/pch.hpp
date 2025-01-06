@@ -1,4 +1,4 @@
-// The MIT License (MIT) 
+// The MIT License (MIT)
 // Copyright (c) 2024-2025 Kun Zhao
 // 
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -21,10 +21,30 @@
 
 #pragma once
 
-// The version numbers are passed in from CMakeList
-#define WebsocketProxy_VERSION_MAJOR @websocket_proxy_VERSION_MAJOR@
-#define WebsocketProxy_VERSION_MINOR @websocket_proxy_VERSION_MINOR@
-#define WebsocketProxy_VERSION_PATCH @websocket_proxy_VERSION_PATCH@
-#define WebsocketProxy_VERSION_TWEAK @websocket_proxy_VERSION_TWEAK@
+#include <boost/asio.hpp>
+#include <boost/asio/signal_set.hpp>
+#include <boost/asio/spawn.hpp>
+#include <boost/asio/ssl.hpp>
+#include <boost/asio/strand.hpp>
+#include <boost/beast/core.hpp>
+#include <boost/beast/websocket.hpp>
+#include <boost/beast/websocket/ssl.hpp>
+#include "spdlog_include.h"
+#include "slick_queue.h"
 
-#define VERSION "@websocket_proxy_VERSION_MAJOR@.@websocket_proxy_VERSION_MINOR@.@websocket_proxy_VERSION_PATCH@.@websocket_proxy_VERSION_TWEAK@"
+#if defined(_MSC_VER)
+#include <windows.h>
+#include <tchar.h>
+#endif
+
+#include <atomic>
+#include <thread>
+#include <string>
+#include <format>
+#include <atomic>
+#include <unordered_map>
+#include <unordered_set>
+#include <cstdlib>
+#include <cstdint>
+#include <stdexcept>
+#include <cassert>

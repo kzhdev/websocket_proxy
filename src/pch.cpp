@@ -19,12 +19,4 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-#pragma once
-
-// The version numbers are passed in from CMakeList
-#define WebsocketProxy_VERSION_MAJOR @websocket_proxy_VERSION_MAJOR@
-#define WebsocketProxy_VERSION_MINOR @websocket_proxy_VERSION_MINOR@
-#define WebsocketProxy_VERSION_PATCH @websocket_proxy_VERSION_PATCH@
-#define WebsocketProxy_VERSION_TWEAK @websocket_proxy_VERSION_TWEAK@
-
-#define VERSION "@websocket_proxy_VERSION_MAJOR@.@websocket_proxy_VERSION_MINOR@.@websocket_proxy_VERSION_PATCH@.@websocket_proxy_VERSION_TWEAK@"
+#include "pch.hpp"
