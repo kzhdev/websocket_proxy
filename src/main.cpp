@@ -21,9 +21,6 @@
 
 #include "pch.hpp"
 
-#include "spdlog_include.h"
-#include <spdlog/async.h>
-#include <spdlog/sinks/basic_file_sink.h>
 #ifdef DEBUG
 #include <spdlog/sinks/stdout_color_sinks.h>
 #endif
@@ -63,9 +60,9 @@ int main(int argc, char* argv[])
     spdlog::set_default_logger(logger);
     spdlog::flush_on(spdlog::level::trace);
 #else
-    auto async_file_logger = spdlog::basic_logger_mt<spdlog::async_factory>("async_file_logger", "./log/WebsocketProxy.log");
-    spdlog::set_default_logger(async_file_logger);
-    spdlog::flush_on(spdlog::level::info);
+    auto async_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>("./Log/WebsocketProxy.log", 524288000, 5);
+    auto async_logger = std::make_shared<spdlog::async_logger>("async_logger", async_sink, spdlog::thread_pool(), spdlog::async_overflow_policy::overrun_oldest);
+    spdlog::set_default_logger(async_logger);
 #endif
 
     uint32_t server_queue_size = 1 << 24;   // 16MB
