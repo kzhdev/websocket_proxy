@@ -280,7 +280,7 @@ void WebsocketProxy::handleClientMessage(Message& msg) {
         handleUnsubscribe(msg);
         break;
     case Message::Type::LogLevel:
-        slick_logger::Logger::instance().set_log_level(static_cast<slick_logger::LogLevel>(reinterpret_cast<LogLevel*>(msg.data)->level));
+        slick_logger::Logger::instance().set_level(static_cast<slick_logger::LogLevel>(reinterpret_cast<LogLevel*>(msg.data)->level));
         break;
     case Message::Type::WsData:
     case Message::Type::WsError:

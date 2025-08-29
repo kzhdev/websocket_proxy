@@ -78,7 +78,7 @@ if (CMAKE_BUILD_TYPE MATCHES Release)
     add_custom_command(TARGET websocket_proxy
         POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_SOURCE_DIR}/include ${RELEASE_DIR}/include
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_BINARY_DIR}/_deps/slick_queue/include ${RELEASE_DIR}/include/websocket_proxy
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_BINARY_DIR}/_deps/slick_queue-src/include ${RELEASE_DIR}/include
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_BINARY_DIR}/bin/Release ${RELEASE_DIR}/bin
         COMMAND ${CMAKE_COMMAND} -E tar "cfv" "websocket_proxy_${BUILD_VERSION}.zip" --format=zip "${RELEASE_DIR}/bin" "${RELEASE_DIR}/include"
         WORKING_DIRECTORY "${RELEASE_DIR}"
