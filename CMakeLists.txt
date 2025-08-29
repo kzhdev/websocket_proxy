@@ -74,6 +74,9 @@ else()
     set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -flto")
 endif()
 
+# Installation rules
+install(DIRECTORY include/ DESTINATION websocket_proxy/include)
+
 if (CMAKE_BUILD_TYPE MATCHES Release)
     add_custom_command(TARGET websocket_proxy
         POST_BUILD
