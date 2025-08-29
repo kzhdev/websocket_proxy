@@ -113,8 +113,8 @@ private:
     bool checkHeartbeats();
     bool sendHeartbeat();
     bool sendHeartbeat(uint64_t now);
-    void sendMessageToClient(uint64_t idex, uint32_t size);
-    void sendMessageToClient(uint64_t idex, uint32_t size, uint64_t now);
+    void sendMessageToClient(uint64_t index, uint32_t size);
+    void sendMessageToClient(uint64_t index, uint32_t size, uint64_t now);
     void onWsOpened(uint64_t id, uint64_t client_pid);
     void onWsClosed(uint64_t id);
     void onWsError(uint64_t id, const char* err, uint32_t len);

@@ -21,9 +21,6 @@
 
 #include "pch.hpp"
 
-#ifdef DEBUG
-#include <spdlog/sinks/stdout_color_sinks.h>
-#endif
 #include "websocket_proxy.h"
 #include <websocket_proxy/version.h>
 #include <csignal>
@@ -33,11 +30,7 @@
 #endif
 
 using namespace websocket_proxy;
-
-void atexit_hanlder()
-{
-    spdlog::shutdown();
-}
+using namespace slick_logger;
 
 /**
 * Usage:
@@ -50,20 +43,19 @@ void atexit_hanlder()
 */
 int main(int argc, char* argv[])
 {
-    std::atexit(atexit_hanlder);
-    spdlog::init_thread_pool(8192, 1);
+    Logger::instance().clear_sinks();
+    LogConfig config;
+    config.queue_size = 65536;
+
 #ifdef DEBUG
-    auto stdout_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-    auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("./log/WebsocketProxy.log");
-    std::vector<spdlog::sink_ptr> sinks {stdout_sink, file_sink};
-    auto logger = std::make_shared<spdlog::async_logger>("websocket_proxy_logger", sinks.begin(), sinks.end(), spdlog::thread_pool(), spdlog::async_overflow_policy::overrun_oldest);
-    spdlog::set_default_logger(logger);
-    spdlog::flush_on(spdlog::level::trace);
-#else
-    auto async_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>("./Log/WebsocketProxy.log", 524288000, 5);
-    auto async_logger = std::make_shared<spdlog::async_logger>("async_logger", async_sink, spdlog::thread_pool(), spdlog::async_overflow_policy::overrun_oldest);
-    spdlog::set_default_logger(async_logger);
+    config.sinks.push_back(std::make_shared<ConsoleSink>(true, true));
+    config.min_level = slick_logger::LogLevel::L_TRACE;
 #endif
+    // Configure rotation
+    RotationConfig rotation;
+    rotation.max_file_size = 200 * 1024 * 1024;  // 200MB
+    rotation.max_files = 10;                     // keep last 10 files
+    config.sinks.push_back(std::make_shared<RotatingFileSink>("./Log/WebsocketProxy.log", rotation));
 
     uint32_t server_queue_size = 1 << 24;   // 16MB
     [[maybe_unused]] bool log_level_set = false;
@@ -73,28 +65,25 @@ int main(int argc, char* argv[])
             std::transform(l.begin(), l.end(), l.begin(), [](char c){ return std::tolower(c); });
             log_level_set = true;
             if (l == "off") {
-                spdlog::set_level(spdlog::level::off);
+                config.min_level = slick_logger::LogLevel::L_OFF;
             }
             else if (l == "critical") {
-                spdlog::set_level(spdlog::level::critical);
-                spdlog::flush_on(spdlog::level::critical);
+                config.min_level = slick_logger::LogLevel::L_FATAL;
             }
             else if (l == "error") {
-                spdlog::set_level(spdlog::level::err);
-                spdlog::flush_on(spdlog::level::err);
+                config.min_level = slick_logger::LogLevel::L_ERROR;
             }
             else if (l == "warning") {
-                spdlog::set_level(spdlog::level::warn);
-                spdlog::flush_on(spdlog::level::warn);
+                config.min_level = slick_logger::LogLevel::L_WARN;
             }
             else if (l == "info") {
-                spdlog::set_level(spdlog::level::info);
+                config.min_level = slick_logger::LogLevel::L_INFO;
             }
             else if (l == "debug") {
-                spdlog::set_level(spdlog::level::debug);
+                config.min_level = slick_logger::LogLevel::L_DEBUG;
             }
             else if (l == "trace") {
-                spdlog::set_level(spdlog::level::trace);
+                config.min_level = slick_logger::LogLevel::L_TRACE;
             }
             else {
                 log_level_set = false;
@@ -105,18 +94,10 @@ int main(int argc, char* argv[])
         }
     }
 
-#ifdef DEBUG
-    if (!log_level_set) {
-        spdlog::set_level(spdlog::level::trace);
-    }
-#endif
+    Logger::instance().init(config);
 
-    spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%F][%t][%l][%s:%#] %v");
-    spdlog::flush_every(std::chrono::seconds(2));
-
-    SPDLOG_INFO(std::format("Start WebsocketProxy {} ...", VERSION));
+    LOG_INFO(std::format("Start WebsocketProxy {} ...", VERSION));
     WebsocketProxy proxy(server_queue_size);
     proxy.run();
-    SPDLOG_INFO("WebsocketProxy Exit.");
-    spdlog::shutdown();
+    LOG_INFO("WebsocketProxy Exit.");
 }

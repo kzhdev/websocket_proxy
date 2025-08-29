@@ -21,7 +21,8 @@
 
 #pragma once
 
-#include "slick_queue.h"
+#include <slick_queue/slick_queue.h>
+#include <slick_logger/logger.hpp>
 #include "websocket_proxy.h"
 #include <unordered_set>
 #include <boost/beast/core.hpp>
@@ -31,7 +32,6 @@
 #include <boost/asio/strand.hpp>
 #include <boost/asio/spawn.hpp>
 #include <cstdlib>
-#include "spdlog_include.h"
 #include <atomic>
 #include <winrt/Windows.Foundation.h>
 
@@ -149,14 +149,14 @@ public:
 
     ~Websocket() = default;
 
-    uint32_t id() const noexcept { return id_; }
+    uint64_t id() const noexcept { return id_; }
 
     std::unordered_set<uint64_t>& clients() noexcept { return clients_; }
 
     // Start the asynchronous operation
     void open(std::function<void(bool)> &&callback, asio::yield_context yield)
     {
-        SPDLOG_INFO("Connecting to {}:{}...", host_, port_);
+        LOG_INFO("Connecting to {}:{}...", host_, port_);
         status_.store(Status::CONNECTING, std::memory_order_release);
 
         beast::error_code ec;
@@ -219,7 +219,7 @@ public:
             return fail(ec, "handshake", &callback);
         }
 
-        SPDLOG_INFO("Websocket {} connected, id={}", url_, id_);
+        LOG_INFO("Websocket {} connected, id={}", url_, id_);
         status_.store(Status::CONNECTED, std::memory_order_release);
     
         // start read messages
@@ -236,7 +236,7 @@ public:
     {
         if (status_.load(std::memory_order_relaxed) < Status::DISCONNECTING)
         {
-            SPDLOG_INFO("Closing {}:{}...", host_, port_);
+            LOG_INFO("Closing {}:{}...", host_, port_);
             status_.store(Status::DISCONNECTING, std::memory_order_release);
             // Close the WebSocket connection
             ws_.async_close(
@@ -249,7 +249,7 @@ public:
 
     void send(const char* buffer, size_t len)
     {
-        SPDLOG_DEBUG("--> {}", std::string(buffer, len));
+        LOG_DEBUG("--> {}", std::string(buffer, len));
         auto n = asio::buffer_copy(w_buffer_.prepare(len), asio::buffer(buffer, len));
         w_buffer_.commit(n);
         ws_.async_write(
@@ -266,7 +266,7 @@ private:
         {
             return fail(ec, "write", nullptr, true);
         }
-        // SPDLOG_TRACE("{}: {}({}) bytes written", id_, bytes_transferred, w_buffer_.size());
+        // LOG_TRACE("{}: {}({}) bytes written", id_, bytes_transferred, w_buffer_.size());
         w_buffer_.consume(bytes_transferred);
     }
 
@@ -277,9 +277,9 @@ private:
             return fail(ec, "read", nullptr, true);
         }
 
-        SPDLOG_TRACE("<-- {}", std::string((const char*)r_buffer_.data().data(), bytes_transferred));
+        LOG_TRACE("<-- {}", std::string((const char*)r_buffer_.data().data(), bytes_transferred));
         proxy_->onWsData(id_, (const char*)r_buffer_.data().data(), bytes_transferred, 0);
-        // SPDLOG_TRACE("{}: {}({}) bytes read", id_, bytes_transferred, r_buffer_.size());
+        // LOG_TRACE("{}: {}({}) bytes read", id_, bytes_transferred, r_buffer_.size());
         r_buffer_.consume(bytes_transferred);
 
         if (status_.load(std::memory_order_relaxed) == Status::CONNECTED) {
@@ -300,7 +300,7 @@ private:
         }
 
         // If we get here then the connection is closed gracefully
-        SPDLOG_INFO("Websocket {}:{} closed", host_, port_);
+        LOG_INFO("Websocket {}:{} closed", host_, port_);
         status_.store(Status::DISCONNECTED, std::memory_order_release);
         proxy_->onWsClosed(id_);
     }
@@ -309,7 +309,7 @@ private:
     void fail(beast::error_code ec, char const *what, std::function<void(bool)> *callback = nullptr, bool close_connection = true)
     {
         auto err_msg = ec.message();
-        SPDLOG_ERROR("{}: {} {}", what, ec.value(), err_msg);
+        LOG_ERROR("{}: {} {}", what, ec.value(), err_msg);
         proxy_->onWsError(id_, err_msg.c_str(), err_msg.size());
         if (callback)
         {

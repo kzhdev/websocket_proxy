@@ -23,34 +23,40 @@ if (CMAKE_BUILD_TYPE MATCHES Release)
 endif()
 
 set(Boost_USE_STATIC_LIBS ON)
-find_package(Boost REQUIRED COMPONENTS beast context)
+find_package(Boost CONFIG REQUIRED COMPONENTS beast context)
 
 set(OPENSSL_USE_STATIC_LIBS TRUE)
 set(OPENSSL_MSVC_STATIC_RT TRUE)
 find_package(OpenSSL REQUIRED)
 
-find_package(spdlog REQUIRED CONFIG)
-add_definitions(-DSPDLOG_USE_STD_FORMAT -DSPDLOG_USE_STD_FORMAT_HO)
+include(FetchContent)
+# Disable examples, tests, and benchmarks for slick_logger
+set(BUILD_SLICK_LOGGER_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(BUILD_SLICK_LOGGER_TESTING OFF CACHE BOOL "" FORCE)
+set(BUILD_SLICK_LOGGER_BENCHMARKS OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    slick_logger
+    GIT_REPOSITORY https://github.com/SlickTech/slick_logger.git
+    GIT_TAG main
+)
+FetchContent_MakeAvailable(slick_logger)
 
-include(cmake/slick_queue.cmake)
-
+message(STATUS "Slick Queue: ${slick_queue_SOURCE_DIR}")
+message(STATUS "Slick Logger: ${slick_logger_SOURCE_DIR}")
 message(STATUS "OpenSSL: ${OPENSSL_INCLUDE_DIR}")
 message(STATUS "Beast: ${boost_beast_CONFIG}")
-message(STATUS "spdlog: ${spdlog_CONFIG}")
 
 set(RELEASE_DIR "${CMAKE_CURRENT_BINARY_DIR}/dist")
 configure_file(src/version.h.in dist/include/websocket_proxy/version.h)
 
 set(SOURCES
-    # src/pch.cpp
     src/main.cpp
     src/websocket_proxy.cpp
 )
 
 add_executable(websocket_proxy ${SOURCES})
-target_include_directories(websocket_proxy PUBLIC include ${slick_queue_SOURCE_DIR}/include ${RELEASE_DIR}/include)
-target_link_libraries(websocket_proxy PRIVATE spdlog::spdlog_header_only Boost::asio Boost::beast Boost::context OpenSSL::SSL OpenSSL::Crypto)
-target_link_libraries(websocket_proxy PRIVATE ${VCPKG_ROOT})
+target_include_directories(websocket_proxy PUBLIC include ${RELEASE_DIR}/include)
+target_link_libraries(websocket_proxy PRIVATE slick_queue slick_logger Boost::asio Boost::beast Boost::context OpenSSL::SSL OpenSSL::Crypto)
 # target_precompile_headers(websocket_proxy PRIVATE "src/pch.hpp")
 
 if (MSVC)
@@ -65,7 +71,7 @@ if (MSVC)
     target_compile_options(websocket_proxy PRIVATE "/bigobj")
     set_target_properties(websocket_proxy PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 else()
-    set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native -flto")
 endif()
 
 if (CMAKE_BUILD_TYPE MATCHES Release)
@@ -80,4 +86,10 @@ if (CMAKE_BUILD_TYPE MATCHES Release)
     )
 endif()
 
-add_subdirectory(example EXLCUDE_FROM_ALL)
+option(BUILD_EXAMPLE "Build example" ON)
+if(BUILD_EXAMPLE)
+    message(STATUS "Building example")
+    add_subdirectory(example)
+else()
+    message(STATUS "Skipping example")
+endif()

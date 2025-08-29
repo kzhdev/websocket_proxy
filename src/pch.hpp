@@ -29,10 +29,8 @@
 #include <boost/beast/core.hpp>
 #include <boost/beast/websocket.hpp>
 #include <boost/beast/websocket/ssl.hpp>
-#include "spdlog_include.h"
-#include <spdlog/async.h>
-#include <spdlog/sinks/rotating_file_sink.h>
-#include "slick_queue.h"
+#include <slick_queue/slick_queue.h>
+#include <slick_logger/logger.hpp>
 
 #if defined(_MSC_VER)
 #include <windows.h>

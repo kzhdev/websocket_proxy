@@ -33,7 +33,6 @@ WebsocketProxy relies on several external libraries. You can install these depen
 
 2. **Install Required Libraries**:
     ```sh
-    ./vcpkg install spdlog:x64-windows-static
     ./vcpkg install boost-beast:x64-windows-static
     ./vcpkg install openssl:x64-windows-static
     ```

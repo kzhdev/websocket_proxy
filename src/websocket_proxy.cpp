@@ -23,14 +23,11 @@
 #include <thread>
 #include <string>
 #include <format>
-#include "spdlog_include.h"
 #include <websocket_proxy/websocket_proxy_client.h>
 #include <boost/asio/signal_set.hpp>
 #include <boost/asio/spawn.hpp>
 #include "websocket_proxy.h"
 #include "websocket.h"
-
-#define SHM_OWNER TEXT("WebsocketProxy_shm_owner")
 
 using namespace websocket_proxy;
 
@@ -67,17 +64,39 @@ WebsocketProxy::WebsocketProxy(uint32_t server_queue_size)
     , exec_path_(GetExePath())
     , closed_sockets_(256) {
 
+    // Get session-isolated name
+    DWORD session_id;
+    if (!ProcessIdToSessionId(pid_, &session_id)) {
+        throw std::runtime_error("Failed to get session ID. err=" + std::to_string(GetLastError()));
+    }
+
+#ifndef UNICODE
+    std::string shmName = "Local\\WebsocketProxy_" + std::to_string(session_id) + "_owner";
+#else
+    std::wstring shmName = L"Local\\WebsocketProxy_" + std::to_wstring(session_id) + L"_owner";
+#endif
+
+    // Create a security descriptor that allows access only to current user
+    SECURITY_ATTRIBUTES sa;
+    SECURITY_DESCRIPTOR sd;
+    InitializeSecurityDescriptor(&sd, SECURITY_DESCRIPTOR_REVISION);
+    SetSecurityDescriptorDacl(&sd, TRUE, NULL, FALSE); // Allow current user only
+    sa.nLength = sizeof(sa);
+    sa.lpSecurityDescriptor = &sd;
+    sa.bInheritHandle = FALSE;
+
     hMapFile_ = CreateFileMapping(
         INVALID_HANDLE_VALUE,   // use paging file
-        NULL,                   // default security
+        &sa,                    // default security
         PAGE_READWRITE,         // read/write access
         0,                      // maximum object size (high-order DWORD)f
         sizeof(DWORD),          // maximum object size (low-order DWORD)
-        SHM_OWNER               // name of mapping object
+        shmName.c_str()         // name of mapping object
     );
 
     if (hMapFile_ == NULL) {
-        throw std::runtime_error("Failed to create shm. err=" + std::to_string(GetLastError()));
+        auto err = GetLastError();
+        throw std::runtime_error(std::format("Failed to create shm. err={}", err));
     }
 
     if (GetLastError() != ERROR_ALREADY_EXISTS) {
@@ -120,28 +139,28 @@ void WebsocketProxy::run() {
     if (!own_shm_) {
         auto owner = owner_pid_->load(std::memory_order_relaxed);
         if (owner) {
-            SPDLOG_INFO("Shm created by other WebsocketProxy instance. PID={}", owner);
+            LOG_INFO("Shm created by other WebsocketProxy instance. PID={}", owner);
             std::this_thread::sleep_for(std::chrono::milliseconds(500));
             if (isProcessRunning(owner)) {
-                SPDLOG_INFO("Only one WebsocketProxy instance is allowed. Shutdown. PID={}", pid_);
+                LOG_INFO("Only one WebsocketProxy instance is allowed. Shutdown. PID={}", pid_);
                 exit(-1);
             }
         }
 
         while (!owner_pid_->compare_exchange_strong(owner, pid_, std::memory_order_release, std::memory_order_relaxed)) {
             if (owner != 0) {
-                SPDLOG_INFO("PID {} take over the ownership. Shutdown", owner);
+                LOG_INFO("PID {} take over the ownership. Shutdown", owner);
                 exit(-1);
             }
         }
 
-        SPDLOG_INFO("The other WebsocketProxy instance is dead, taking over ownership");
+        LOG_INFO("The other WebsocketProxy instance is dead, taking over ownership");
     }
 
     boost::asio::signal_set signals(ioc_, SIGINT, SIGTERM);
     signals.async_wait([&](auto, auto){ shutdown(); });
 
-    SPDLOG_INFO("\n\nWebsocketProxy started. PID={}\n", pid_);
+    LOG_INFO("\n\nWebsocketProxy started. PID={}\n", pid_);
 
     // start heartbeat
     ioc_.post([this]() {
@@ -166,32 +185,32 @@ void WebsocketProxy::run() {
             }
             boost::system::error_code ec;
             ioc_.run(ec);
-            SPDLOG_INFO("asio loop stopped");
+            LOG_INFO("asio loop stopped");
         }
         catch(const std::exception& e)
         {
             ioc_.restart();
-            SPDLOG_ERROR(std::format("{}", e.what()));
+            LOG_ERROR(std::format("{}", e.what()));
         }
     }
 
     if (!ioc_.stopped())
     {
-        SPDLOG_TRACE("call ioc_.stop at the end of run");
+        LOG_TRACE("call ioc_.stop at the end of run");
         ioc_.stop();
     }
-    SPDLOG_INFO("WebsocketProxy Exit. PID={}", pid_);
+    LOG_INFO("WebsocketProxy Exit. PID={}", pid_);
 }
 
 void WebsocketProxy::shutdown()
 {
-    SPDLOG_INFO("Shuting down...");
+    LOG_INFO("Shuting down...");
     ioc_.post([this]() {
         run_.store(false, std::memory_order_release);
         for (auto &kvp : websocketsById_)
         {
             auto& websocket = kvp.second;
-            SPDLOG_INFO("Close ws {}", websocket->url_.c_str());
+            LOG_INFO("Close ws {}", websocket->url_);
             websocket->close();
             websocketsByUrlApiKey_.erase(WebsocketKey(websocket->url_, websocket->api_key_));
         }
@@ -201,7 +220,7 @@ void WebsocketProxy::shutdown()
         ioc_.post([this]() {
             asio::deadline_timer timer(ioc_, boost::posix_time::seconds(5));
             timer.async_wait([this](const boost::system::error_code&) {
-                SPDLOG_TRACE("call ioc_.stop on time out");
+                LOG_TRACE("call ioc_.stop on time out");
                 ioc_.stop();
             });
         });
@@ -217,13 +236,13 @@ void WebsocketProxy::startHeartbeat() {
 
 void WebsocketProxy::processClientMessage() {
     auto req = client_queue_.read(client_index_);
-    if (req.first) {
+    if (req.first) [[unlikely]] {
         handleClientMessage(reinterpret_cast<Message&>(*req.first));
     }
 
     removeClosedSockets();
 
-    if (run_.load(std::memory_order_relaxed)) {
+    if (run_.load(std::memory_order_relaxed)) [[likely]] {
         if (shutdown_time_ && (get_timestamp() - shutdown_time_) >= 60000) {
             shutdown();
         }
@@ -236,7 +255,7 @@ void WebsocketProxy::processClientMessage() {
 
 void WebsocketProxy::handleClientMessage(Message& msg) {
     switch (msg.type) {
-    case Message::Type::Regster:
+    case Message::Type::Register:
         handleClientRegistration(msg);
         break;
     case Message::Type::Unregister:
@@ -260,11 +279,14 @@ void WebsocketProxy::handleClientMessage(Message& msg) {
     case Message::Type::Unsubscribe:
         handleUnsubscribe(msg);
         break;
+    case Message::Type::LogLevel:
+        slick_logger::Logger::instance().set_log_level(static_cast<slick_logger::LogLevel>(reinterpret_cast<LogLevel*>(msg.data)->level));
+        break;
     case Message::Type::WsData:
     case Message::Type::WsError:
         break;
     default:
-        SPDLOG_ERROR("Unknown msg, type={}", static_cast<uint32_t>(msg.type));
+        LOG_ERROR("Unknown msg, type={}", static_cast<uint32_t>(msg.type));
         break;
     }
 }
@@ -280,7 +302,7 @@ WebsocketProxy::ClientInfo* WebsocketProxy::getClient(uint64_t pid) {
 
 void WebsocketProxy::handleClientRegistration(Message& msg) {
     auto reg = reinterpret_cast<RegisterMessage*>(msg.data);
-    SPDLOG_INFO("Register client {} connected, name: {}", msg.pid, reg->name);
+    LOG_INFO("Register client {} connected, name: {}", msg.pid, reg->name);
     reg->server_pid = pid_;
     shutdown_time_ = 0;
 
@@ -296,7 +318,7 @@ void WebsocketProxy::handleClientRegistration(Message& msg) {
 void WebsocketProxy::unregisterClient(uint64_t pid) {
     auto it = clients_.find(pid);
     if (it != clients_.end()) {
-        SPDLOG_INFO("Unregister client {}", pid);
+        LOG_INFO("Unregister client {}", pid);
         std::vector<uint64_t> to_close;
         to_close.reserve(websocketsById_.size());
         for (auto& kvp : websocketsById_) {
@@ -315,14 +337,14 @@ void WebsocketProxy::unregisterClient(uint64_t pid) {
         clients_.erase(it);
 
         if (clients_.empty()) {
-            SPDLOG_INFO("Last client disconnected.");
+            LOG_INFO("Last client disconnected.");
             shutdown_time_ = get_timestamp();
         }
     }
 }
 
 void WebsocketProxy::unregisterClient(std::unordered_map<uint64_t, ClientInfo>::iterator &iter) {
-    SPDLOG_INFO("Unregister client {}", iter->first);
+    LOG_INFO("Unregister client {}", iter->first);
     std::vector<uint64_t> to_close;
     to_close.reserve(websocketsById_.size());
     for (auto& kvp : websocketsById_) {
@@ -330,7 +352,7 @@ void WebsocketProxy::unregisterClient(std::unordered_map<uint64_t, ClientInfo>::
         auto itr = ws_clients.find(iter->first);
         if (itr != ws_clients.end()) {
             ws_clients.erase(itr);
-            SPDLOG_INFO("WS client {} removed from ws id={}", iter->first, kvp.first);
+            LOG_INFO("WS client {} removed from ws id={}", iter->first, kvp.first);
             if (ws_clients.empty()) {
                 to_close.emplace_back(kvp.first);
             }
@@ -342,7 +364,7 @@ void WebsocketProxy::unregisterClient(std::unordered_map<uint64_t, ClientInfo>::
     iter = clients_.erase(iter);
 
     if (clients_.empty()) {
-        SPDLOG_INFO("Last client disconnected.");
+        LOG_INFO("Last client disconnected.");
         shutdown_time_ = get_timestamp();
     }
 }
@@ -366,7 +388,7 @@ void WebsocketProxy::openWs(Message& msg) {
                 req->client_pid = msg.pid;
                 req->new_connection = (state == Websocket::Status::CONNECTING);
                 onWsOpened(id, msg.pid);
-                SPDLOG_INFO("Websocket {} already opened. id={}, new={}, client={}", req->url, id, req->new_connection, msg.pid);
+                LOG_INFO("Websocket {} already opened. id={}, new={}, client={}", req->url, id, req->new_connection, msg.pid);
                 msg.status.store(Message::Status::SUCCESS, std::memory_order_release);
                 return;
             }
@@ -381,7 +403,7 @@ void WebsocketProxy::openWs(Message& msg) {
 }
 
 void WebsocketProxy::openNewWs(Message& msg, WsOpen* req) {
-    SPDLOG_INFO("Opening ws {}, clinet={}", req->url, msg.pid);
+    LOG_INFO("Opening ws {}, clinet={}", req->url, msg.pid);
     req->new_connection = true;
     auto websocket = std::make_shared<Websocket>(this, ioc_, ctx_, pid_ * 10000 + (++websocket_id_), req->url, req->api_key);
     asio::spawn(
@@ -407,7 +429,7 @@ void WebsocketProxy::openNewWs(Message& msg, WsOpen* req) {
             // so we just rethrow the exception here,
             // which will cause `ioc.run()` to throw
             if (ex) {
-                SPDLOG_INFO("Open Failed......");
+                LOG_INFO("Open Failed......");
                 msg.status.store(Message::Status::FAILED, std::memory_order_release);
                 std::rethrow_exception(ex);
             }
@@ -424,37 +446,38 @@ void WebsocketProxy::closeWs(Message& msg) {
 }
 
 void WebsocketProxy::closeWs(uint64_t id, uint64_t pid) {
-    SPDLOG_INFO("Close ws. id={}, pid={}", id, pid);
+    LOG_INFO("Close ws. id={}, pid={}", id, pid);
     auto it = websocketsById_.find(id);
     if (it != websocketsById_.end()) {
         auto& websocket = it->second;
         auto itr = websocket->clients_.find(pid);
         if (itr != websocket->clients_.end()) {
             websocket->clients_.erase(itr);
-            SPDLOG_INFO("WS client {} removed from ws id={}", pid, id);
+            LOG_INFO("WS client {} removed from ws id={}", pid, id);
         }
         if (websocket->clients_.empty()) {
-            SPDLOG_INFO("Close ws {}", websocket->url_.c_str());
+            LOG_INFO("Close ws {}", websocket->url_);
             websocket->close();
             websocketsByUrlApiKey_.erase(WebsocketKey(websocket->url_, websocket->api_key_));
             websocketsById_.erase(it);
         }
     } 
     else {
-        SPDLOG_DEBUG("Close ws. socket not found id={}", id);
+        LOG_DEBUG("Close ws. socket not found id={}", id);
     }
 }
 void WebsocketProxy::handleSubscribe(Message& msg) {
     auto req = reinterpret_cast<WsSubscription*>(msg.data);
     auto client = getClient(msg.pid);
     if (client) {
-        SPDLOG_INFO("Subscribe {} client={} ws_id={} type={}", req->symbol, msg.pid, req->id, (int)req->type);
+        std::string_view symbol_view(req->symbol, strnlen(req->symbol, sizeof(req->symbol)));
+        LOG_INFO("Subscribe {} client={} ws_id={} type={}", symbol_view, msg.pid, req->id, (int)req->type);
         auto it = websocketsById_.find(req->id);
         if (it != websocketsById_.end()) {
             auto& subscriptions = it->second->subscriptions_;
-            auto sub_it = subscriptions.find(req->symbol);
+            auto sub_it = subscriptions.find(std::string(symbol_view));
             if (sub_it == subscriptions.end()) {
-                auto [sub_it, b] = subscriptions.emplace(req->symbol, req->type);
+                auto [sub_it, b] = subscriptions.emplace(symbol_view, req->type);
                 sub_it->second.clients_.emplace(msg.pid);
                 it->second->send(req->request, req->request_len);
                 msg.status.store(Message::Status::SUCCESS, std::memory_order_release);
@@ -473,11 +496,11 @@ void WebsocketProxy::handleSubscribe(Message& msg) {
             }
         }
         else {
-            SPDLOG_DEBUG("Websocket not found. id={}", req->id);
+            LOG_DEBUG("Websocket not found. id={}", req->id);
         }
     }
     else {
-        SPDLOG_DEBUG("Client not found. pid={}", msg.pid);
+        LOG_DEBUG("Client not found. pid={}", msg.pid);
     }
     msg.status.store(Message::Status::FAILED, std::memory_order_release);
 }
@@ -486,11 +509,12 @@ void WebsocketProxy::handleUnsubscribe(Message& msg) {
     auto req = reinterpret_cast<WsSubscription*>(msg.data);
     auto client = getClient(msg.pid);
     if (client) {
-        SPDLOG_INFO("Unsubscribe {} client={} ws_id={}", req->symbol, msg.pid, req->id);
+        std::string_view symbol_view(req->symbol, strnlen(req->symbol, sizeof(req->symbol)));
+        LOG_INFO("Unsubscribe {} client={} ws_id={}", symbol_view, msg.pid, req->id);
         auto it = websocketsById_.find(req->id);
         if (it != websocketsById_.end()) {
             auto& subscriptions = it->second->subscriptions_;
-            auto sub_it = subscriptions.find(req->symbol);
+            auto sub_it = subscriptions.find(std::string(symbol_view));
             if (sub_it != subscriptions.end()) {
                 sub_it->second.clients_.erase(msg.pid);
                 if (sub_it->second.clients_.empty()) {
@@ -500,15 +524,15 @@ void WebsocketProxy::handleUnsubscribe(Message& msg) {
                 }
             }
             else {
-                SPDLOG_DEBUG("Subscription not find. symbol={} ws_id={}", req->symbol, req->id);
+                LOG_DEBUG("Subscription not find. symbol={} ws_id={}", symbol_view, req->id);
             }
         }
         else {
-            SPDLOG_DEBUG("Websocket not found. id={}", req->id);
+            LOG_DEBUG("Websocket not found. id={}", req->id);
         }
     }
     else {
-        SPDLOG_DEBUG("Client not found. pid={}", msg.pid);
+        LOG_DEBUG("Client not found. pid={}", msg.pid);
     }
     msg.status.store(Message::Status::SUCCESS, std::memory_order_release);
 }
@@ -554,7 +578,7 @@ bool WebsocketProxy::checkHeartbeats() {
     for (auto it = clients_.begin(); it != clients_.end();) {
         auto& client = it->second;
         if ((now - client.last_heartbeat_time) > 30000) {
-            SPDLOG_INFO("Client {} heartbeat lost", it->first);
+            LOG_INFO("Client {} heartbeat lost", it->first);
             unregisterClient(it);
         }
         else {
@@ -584,7 +608,7 @@ void WebsocketProxy::removeClosedSockets() {
     while ((read = closed_sockets_.read(closed_sockets_index_)).first) {
         auto it = websocketsById_.find(*read.first);
         if (it != websocketsById_.end()) {
-            SPDLOG_INFO("Remove websocket id={}", it->first);
+            LOG_INFO("Remove websocket id={}", it->first);
             websocketsByUrlApiKey_.erase(WebsocketKey(it->second->url_, it->second->api_key_));
             websocketsById_.erase(it);
         }
@@ -614,7 +638,7 @@ void WebsocketProxy::onWsClosed(uint64_t id) {
     (*closed_sockets_[idx]) = id;
     closed_sockets_.publish(idx);
 
-    SPDLOG_INFO("Ws {} closed", id);
+    LOG_INFO("Ws {} closed", id);
 }
 
 void WebsocketProxy::onWsError(uint64_t id, const char* err, uint32_t len) {

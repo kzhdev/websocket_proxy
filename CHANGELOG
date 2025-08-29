@@ -1,3 +1,10 @@
+1.1.0.0 - [8/29/2025]
+- Replace spdlog with slick_logger via FetchContent for better integration
+- Update slick_queue handling and remove obsolete cmake/slick_queue.cmake
+- Enhance Windows shared memory security with session-isolated names
+- Bump version to 1.1.0.0 and update CHANGELOG, README.md, and build files
+- Refactor includes and dependencies in source files for consistency
+
 1.0.0.3
 - Rotate log file
  
