@@ -37,11 +37,10 @@ set(BUILD_SLICK_LOGGER_BENCHMARKS OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
     slick_logger
     GIT_REPOSITORY https://github.com/SlickQuant/slick_logger.git
-    GIT_TAG v0.1.0.2
+    GIT_TAG v1.0.0.4
 )
 FetchContent_MakeAvailable(slick_logger)
 
-message(STATUS "Slick Queue: ${slick_queue_SOURCE_DIR}")
 message(STATUS "Slick Logger: ${slick_logger_SOURCE_DIR}")
 message(STATUS "OpenSSL: ${OPENSSL_INCLUDE_DIR}")
 message(STATUS "Beast: ${boost_beast_CONFIG}")
