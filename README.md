@@ -1,7 +1,7 @@
 # WebsocketProxy
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://en.cppreference.com/w/cpp/20)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A high-performance C++ framework that enables multiple clients to share a single WebSocket connection through efficient inter-process communication (IPC) using shared memory queues.
 
@@ -371,6 +371,6 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 ---
 
-**Version**: 1.1.1.0
+**Version**: 1.1.1.1
 **Author**: Kun Zhao
 **Copyright**: © 2024-2025

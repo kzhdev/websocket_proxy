@@ -45,7 +45,6 @@ int main(int argc, char* argv[])
 {
     Logger::instance().clear_sinks();
     LogConfig config;
-    config.queue_size = 65536;
 
 #ifdef DEBUG
     config.sinks.push_back(std::make_shared<ConsoleSink>(true, true));
