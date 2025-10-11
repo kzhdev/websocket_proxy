@@ -264,7 +264,12 @@ private:
     {
         if(ec)
         {
-            return fail(ec, "write", nullptr, true);
+            if (status_.load(std::memory_order_relaxed) != Status::DISCONNECTED &&
+                ec != beast::websocket::error::closed && ec != asio::error::eof &&
+                ec != asio::error::operation_aborted) {
+                fail(ec, "write", nullptr, true);
+            }
+            return;
         }
         // LOG_TRACE("{}: {}({}) bytes written", id_, bytes_transferred, w_buffer_.size());
         w_buffer_.consume(bytes_transferred);
@@ -274,7 +279,12 @@ private:
     {
         if(ec)
         {
-            return fail(ec, "read", nullptr, true);
+            if (status_.load(std::memory_order_relaxed) != Status::DISCONNECTED &&
+                ec != beast::websocket::error::closed && ec != asio::error::eof &&
+                ec != asio::error::operation_aborted) {
+                fail(ec, "read", nullptr, true);
+            }
+            return;
         }
 
         LOG_TRACE("<-- {}", std::string((const char*)r_buffer_.data().data(), bytes_transferred));
